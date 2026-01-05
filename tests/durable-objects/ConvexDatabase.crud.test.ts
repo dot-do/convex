@@ -25,30 +25,258 @@ interface MockSqlStorage {
   exec(query: string, ...params: unknown[]): MockSqlCursor
 }
 
-// Create a mock implementation of SqlStorage
+// Create a mock implementation of SqlStorage that actually stores data
 function createMockSqlStorage(): MockSqlStorage {
-  const tables = new Map<string, Map<string, Record<string, unknown>>>()
+  // Per-table storage: Map<tableName, Map<_id, { _creationTime, data }>>
+  const tables = new Map<string, Map<string, { _creationTime: number; data: string }>>()
+  // _documents tracking table
+  const documentIndex = new Map<string, { _table: string; _creationTime: number }>()
+  const metadata = new Map<string, string>()
+  const schemaVersions: Array<{ version: number; applied_at: number; schema_hash: string }> = []
+
+  // Transaction support
+  let inTransaction = false
+  let tablesSnapshot: Map<string, Map<string, { _creationTime: number; data: string }>> | null = null
+  let documentIndexSnapshot: Map<string, { _table: string; _creationTime: number }> | null = null
+
+  const getOrCreateTable = (name: string) => {
+    if (!tables.has(name)) tables.set(name, new Map())
+    return tables.get(name)!
+  }
+
+  const snapshotData = () => {
+    tablesSnapshot = new Map()
+    for (const [name, table] of tables) {
+      tablesSnapshot.set(name, new Map(table))
+    }
+    documentIndexSnapshot = new Map(documentIndex)
+  }
+
+  const restoreSnapshot = () => {
+    if (tablesSnapshot) {
+      tables.clear()
+      for (const [name, table] of tablesSnapshot) {
+        tables.set(name, new Map(table))
+      }
+    }
+    if (documentIndexSnapshot) {
+      documentIndex.clear()
+      for (const [id, doc] of documentIndexSnapshot) {
+        documentIndex.set(id, doc)
+      }
+    }
+    tablesSnapshot = null
+    documentIndexSnapshot = null
+  }
 
   return {
     exec(query: string, ...params: unknown[]): MockSqlCursor {
-      // This is a simplified mock - real tests would need full SQL parsing
-      const rowsRead = 0
+      let rowsRead = 0
       let rowsWritten = 0
       const results: Record<string, unknown>[] = []
 
-      // Simple pattern matching for common operations
+      // Transaction support
+      if (query === 'BEGIN TRANSACTION') {
+        inTransaction = true
+        snapshotData()
+        return { toArray: () => results, rowsRead: 0, rowsWritten: 0 }
+      }
+      if (query === 'COMMIT') {
+        inTransaction = false
+        tablesSnapshot = null
+        documentIndexSnapshot = null
+        return { toArray: () => results, rowsRead: 0, rowsWritten: 0 }
+      }
+      if (query === 'ROLLBACK') {
+        inTransaction = false
+        restoreSnapshot()
+        return { toArray: () => results, rowsRead: 0, rowsWritten: 0 }
+      }
+
+      // CREATE TABLE - track tables
       if (query.includes('CREATE TABLE')) {
-        // No-op for mock
-      } else if (query.includes('CREATE INDEX')) {
-        // No-op for mock
-      } else if (query.includes('INSERT INTO')) {
+        const match = query.match(/CREATE TABLE IF NOT EXISTS "?(\w+)"?/i)
+        if (match) getOrCreateTable(match[1])
+      }
+      // CREATE INDEX - no-op
+      else if (query.includes('CREATE INDEX')) {
+        // No-op
+      }
+      // INSERT INTO _documents (tracking table)
+      else if (query.includes('INSERT INTO _documents')) {
+        const [_id, _table, _creationTime] = params as [string, string, number]
+        documentIndex.set(_id, { _table, _creationTime })
         rowsWritten = 1
-      } else if (query.includes('SELECT')) {
-        // Return empty results by default
-      } else if (query.includes('UPDATE')) {
+      }
+      // INSERT INTO "tableName" (actual data)
+      else if (query.includes('INSERT INTO')) {
+        const match = query.match(/INSERT INTO "?(\w+)"?\s+\(_id,\s*_creationTime,\s*data\)/i)
+        if (match) {
+          const tableName = match[1]
+          const [_id, _creationTime, data] = params as [string, number, string]
+          getOrCreateTable(tableName).set(_id, { _creationTime, data })
+          rowsWritten = 1
+        }
+      }
+      // INSERT INTO _metadata
+      else if (query.includes('INSERT OR REPLACE INTO _metadata') || query.includes('INSERT INTO _metadata')) {
+        const [key, value] = params as [string, string]
+        metadata.set(key, value)
         rowsWritten = 1
-      } else if (query.includes('DELETE')) {
+      }
+      // INSERT INTO _schema_versions
+      else if (query.includes('INSERT INTO _schema_versions')) {
+        const [version, applied_at, schema_hash] = params as [number, number, string]
+        schemaVersions.push({ version, applied_at, schema_hash })
         rowsWritten = 1
+      }
+      // SELECT from specific table WHERE _id = ?
+      else if (query.includes('SELECT') && query.includes('WHERE _id = ?') && !query.includes('_documents')) {
+        const match = query.match(/FROM "?(\w+)"?\s+WHERE/i)
+        if (match) {
+          const tableName = match[1]
+          const [_id] = params as [string]
+          const table = tables.get(tableName)
+          const doc = table?.get(_id)
+          if (doc) {
+            results.push({ _id, _creationTime: doc._creationTime, data: doc.data })
+            rowsRead = 1
+          }
+        }
+      }
+      // SELECT from _documents WHERE _id = ?
+      else if (query.includes('SELECT') && query.includes('_documents') && query.includes('_id = ?')) {
+        const [_id] = params as [string]
+        const doc = documentIndex.get(_id)
+        if (doc) {
+          results.push({ _id, ...doc })
+          rowsRead = 1
+        }
+      }
+      // SELECT from _documents WHERE _table = ? (query all)
+      else if (query.includes('SELECT') && query.includes('_documents') && query.includes('_table = ?')) {
+        const [_table] = params as [string]
+        for (const [_id, doc] of documentIndex) {
+          if (doc._table === _table) {
+            results.push({ _id, ...doc })
+            rowsRead++
+          }
+        }
+      }
+      // SELECT from specific table with optional filtering/ordering/limit
+      else if (query.includes('SELECT') && query.includes('FROM') && !query.includes('_documents') && !query.includes('_metadata') && !query.includes('_schema_versions') && !query.includes('COUNT')) {
+        const match = query.match(/FROM "?(\w+)"?/i)
+        if (match && match[1] !== 'sqlite_master') {
+          const tableName = match[1]
+          const table = tables.get(tableName)
+          if (table) {
+            // Get all documents
+            let docs: Array<{ _id: string; _creationTime: number; data: string; parsed: Record<string, unknown> }> = []
+            for (const [_id, doc] of table) {
+              docs.push({ _id, _creationTime: doc._creationTime, data: doc.data, parsed: JSON.parse(doc.data) })
+            }
+
+            // Apply WHERE filters (json_extract)
+            if (query.includes('WHERE')) {
+              const filterMatches = query.matchAll(/json_extract\(data,\s*'\$\.(\w+)'\)\s*([!=<>]+)\s*\?/g)
+              let paramIndex = 0
+              for (const filterMatch of filterMatches) {
+                const field = filterMatch[1]
+                const operator = filterMatch[2]
+                const value = JSON.parse(params[paramIndex++] as string)
+                docs = docs.filter(doc => {
+                  const docValue = doc.parsed[field]
+                  switch (operator) {
+                    case '=': return docValue === value
+                    case '!=': return docValue !== value
+                    case '<': return (docValue as number) < value
+                    case '<=': return (docValue as number) <= value
+                    case '>': return (docValue as number) > value
+                    case '>=': return (docValue as number) >= value
+                    default: return true
+                  }
+                })
+              }
+            }
+
+            // Apply ORDER BY
+            const orderMatch = query.match(/ORDER BY\s+(?:json_extract\(data,\s*'\$\.(\w+)'\)|(\w+))\s+(ASC|DESC)/i)
+            if (orderMatch) {
+              const orderField = orderMatch[1] || orderMatch[2]
+              const direction = orderMatch[3].toUpperCase()
+              docs.sort((a, b) => {
+                const aVal = orderField === '_creationTime' ? a._creationTime : a.parsed[orderField]
+                const bVal = orderField === '_creationTime' ? b._creationTime : b.parsed[orderField]
+                if (aVal < bVal) return direction === 'ASC' ? -1 : 1
+                if (aVal > bVal) return direction === 'ASC' ? 1 : -1
+                return 0
+              })
+            }
+
+            // Apply LIMIT
+            const limitMatch = query.match(/LIMIT\s+(\d+)/i)
+            if (limitMatch) {
+              docs = docs.slice(0, parseInt(limitMatch[1]))
+            }
+
+            for (const doc of docs) {
+              results.push({ _id: doc._id, _creationTime: doc._creationTime, data: doc.data })
+              rowsRead++
+            }
+          }
+        }
+      }
+      // SELECT COUNT from _documents WHERE _table = ?
+      else if (query.includes('SELECT COUNT') && query.includes('_documents')) {
+        const [_table] = params as [string]
+        let count = 0
+        for (const [, doc] of documentIndex) {
+          if (doc._table === _table) count++
+        }
+        results.push({ count })
+        rowsRead = 1
+      }
+      // SELECT from _metadata WHERE key = ?
+      else if (query.includes('SELECT') && query.includes('_metadata')) {
+        const [key] = params as [string]
+        const value = metadata.get(key)
+        if (value !== undefined) {
+          results.push({ value })
+          rowsRead = 1
+        }
+      }
+      // UPDATE "tableName" SET data = ? WHERE _id = ?
+      else if (query.includes('UPDATE') && !query.includes('_documents')) {
+        const match = query.match(/UPDATE "?(\w+)"?\s+SET/i)
+        if (match) {
+          const tableName = match[1]
+          const [data, _id] = params as [string, string]
+          const table = tables.get(tableName)
+          const existing = table?.get(_id)
+          if (existing) {
+            table!.set(_id, { ...existing, data })
+            rowsWritten = 1
+          }
+        }
+      }
+      // DELETE FROM "tableName" WHERE _id = ?
+      else if (query.includes('DELETE FROM') && !query.includes('_documents')) {
+        const match = query.match(/DELETE FROM "?(\w+)"?\s+WHERE/i)
+        if (match) {
+          const tableName = match[1]
+          const [_id] = params as [string]
+          const table = tables.get(tableName)
+          if (table?.delete(_id)) {
+            rowsWritten = 1
+          }
+        }
+      }
+      // DELETE FROM _documents WHERE _id = ?
+      else if (query.includes('DELETE FROM _documents')) {
+        const [_id] = params as [string]
+        if (documentIndex.delete(_id)) {
+          rowsWritten = 1
+        }
       }
 
       return {

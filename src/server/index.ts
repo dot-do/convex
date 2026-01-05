@@ -36,6 +36,11 @@ export { httpRouter, httpAction, HttpRouter } from './httpRouter'
 // Export schema builders
 export { defineSchema, defineTable } from './schema'
 
+// Export database implementations
+export { DatabaseReader, InMemoryStorage } from './database/DatabaseReader'
+export type { StorageBackend, QueryOptions } from './database/DatabaseReader'
+export { DatabaseWriter } from './database/DatabaseWriter'
+
 // Export context types
 export type {
   QueryCtx,
@@ -49,10 +54,46 @@ export type {
   StorageWriter,
 } from './context'
 
+// Export context implementations
+export {
+  QueryCtxImpl,
+  DatabaseReaderImpl,
+  AuthImpl,
+  StorageReaderImpl,
+  createQueryCtx,
+  createDefaultQueryCtx,
+} from './context'
+
+// Export MutationCtx utilities
+export {
+  createMutationCtx,
+  validateMutationCtx,
+  validateDatabaseWriter,
+  validateStorageWriter,
+  validateScheduler,
+  validateAuth,
+  createValidatedMutationCtx,
+} from './context/MutationCtx'
+
+// Export ActionCtx utilities
+export {
+  createActionCtx,
+  validateActionCtx,
+  validateAuth as validateActionAuth,
+  validateStorageReader,
+  validateScheduler as validateActionScheduler,
+  createValidatedActionCtx,
+} from './context/ActionCtx'
+
 // Export query builder types
 export type {
   QueryBuilder,
   QueryInitializer,
   IndexRange,
   IndexRangeBuilder,
-} from './queryBuilder'
+  FilterBuilder,
+  FilterExpression,
+  SearchFilterBuilder,
+} from './database/QueryBuilder'
+
+export { QueryBuilderImpl } from './database/QueryBuilder'

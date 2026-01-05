@@ -1,15 +1,10 @@
 /**
- * Query Builder for database queries
+ * Query Builder for database queries (Layer 4)
  *
- * Re-exports from database/QueryBuilder.ts for backward compatibility.
- * @deprecated Import from './database/QueryBuilder' instead
+ * Provides a fluent API for building database queries with index support.
  */
 
-export * from './database/QueryBuilder'
-
-// Legacy compatibility exports below (will be removed in future version)
-
-import type { Id, PaginationOptions, PaginationResult } from '../types'
+import type { Id, PaginationOptions, PaginationResult } from '../../types'
 
 // ============================================================================
 // Index Range Types
@@ -340,16 +335,16 @@ export class QueryBuilderImpl<TableName extends string> implements QueryBuilder<
     return this.indexFilters
   }
 
+  getFilterExpressions(): FilterExpression[] {
+    return this.filterExpressions
+  }
+
   getOrder(): 'asc' | 'desc' {
     return this.orderDirection
   }
 
   getLimit(): number | undefined {
     return this.limitCount
-  }
-
-  getFilterExpressions(): FilterExpression[] {
-    return this.filterExpressions
   }
 }
 

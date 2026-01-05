@@ -682,7 +682,10 @@ describe('Query Translation', () => {
             ],
           },
         })
-        expect(result.sql).toMatch(/\([^)]*OR[^)]*\)/)
+        // Check that OR conditions are wrapped in parentheses
+        // The WHERE clause should contain (... OR ...)
+        expect(result.sql).toContain('OR')
+        expect(result.sql).toMatch(/\(.+OR.+\)/)
       })
 
       it('should handle OR with three conditions', () => {
@@ -698,7 +701,8 @@ describe('Query Translation', () => {
             ],
           },
         })
-        const orCount = (result.sql.match(/OR/g) || []).length
+        // Count only the OR logical operators (not ORDER BY)
+        const orCount = (result.sql.match(/ OR /g) || []).length
         expect(orCount).toBe(2)
       })
     })

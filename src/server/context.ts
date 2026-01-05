@@ -261,3 +261,17 @@ export interface ActionCtx {
     }
   ): Promise<Array<{ _id: Id<TableName>; _score: number }>>
 }
+
+// ============================================================================
+// Context Implementations
+// ============================================================================
+
+// Export concrete implementations from context subdirectory
+export {
+  QueryCtxImpl,
+  DatabaseReaderImpl,
+  AuthImpl,
+  StorageReaderImpl,
+  createQueryCtx,
+  createDefaultQueryCtx,
+} from './context/QueryCtx'
