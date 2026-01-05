@@ -6,6 +6,17 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.{test,spec}.{ts,tsx}', 'tests/**/*.{test,spec}.{ts,tsx}'],
     exclude: ['node_modules', 'dist'],
+    // CRITICAL: Limit workers to prevent 50GB memory consumption
+    // With 28 CPUs, vitest spawns ~28 workers by default
+    // Each worker loads the massive test files (~1200 lines with heavy mocking)
+    // This causes ~2-3GB per worker = ~50GB+ total
+    pool: 'threads',
+    poolOptions: {
+      threads: {
+        maxThreads: 4,
+        minThreads: 1,
+      },
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html', 'lcov'],
