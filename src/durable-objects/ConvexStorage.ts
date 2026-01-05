@@ -255,8 +255,8 @@ export class ConvexStorage implements DurableObject {
 
           case 'list':
             const result = await this.list({
-              limit: body.limit,
-              cursor: body.cursor,
+              ...(body.limit !== undefined && { limit: body.limit }),
+              ...(body.cursor !== undefined && { cursor: body.cursor }),
             })
             return Response.json(result)
 

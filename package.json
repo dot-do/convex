@@ -7,7 +7,11 @@
   "author": "convex.do",
   "repository": {
     "type": "git",
-    "url": "https://github.com/drivly/convex.do"
+    "url": "git+https://github.com/drivly/convex.do.git"
+  },
+  "homepage": "https://github.com/drivly/convex.do#readme",
+  "bugs": {
+    "url": "https://github.com/drivly/convex.do/issues"
   },
   "main": "./dist/index.js",
   "module": "./dist/index.js",

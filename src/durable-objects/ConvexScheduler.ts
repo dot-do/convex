@@ -21,7 +21,7 @@ interface ScheduledFunction {
 
 export class ConvexScheduler implements DurableObject {
   private state: DurableObjectState
-  private env: Env
+  protected env: Env
   private sql: SqlStorage
   private initialized = false
 
@@ -159,8 +159,8 @@ export class ConvexScheduler implements DurableObject {
       runAt: row.run_at as number,
       status: row.status as ScheduledFunction['status'],
       createdAt: row.created_at as number,
-      completedAt: row.completed_at as number | undefined,
-      error: row.error as string | undefined,
+      ...(row.completed_at !== null && { completedAt: row.completed_at as number }),
+      ...(row.error !== null && { error: row.error as string }),
       retries: row.retries as number,
       maxRetries: row.max_retries as number,
     }
@@ -195,8 +195,8 @@ export class ConvexScheduler implements DurableObject {
       runAt: row.run_at as number,
       status: row.status as ScheduledFunction['status'],
       createdAt: row.created_at as number,
-      completedAt: row.completed_at as number | undefined,
-      error: row.error as string | undefined,
+      ...(row.completed_at !== null && { completedAt: row.completed_at as number }),
+      ...(row.error !== null && { error: row.error as string }),
       retries: row.retries as number,
       maxRetries: row.max_retries as number,
     }))

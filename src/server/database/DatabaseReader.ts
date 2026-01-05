@@ -77,12 +77,14 @@ export class DatabaseReader {
   query<TableName extends string>(tableName: TableName): QueryBuilder<TableName> {
     // Create a query builder with a fetch function that uses our storage
     const dbFetch = async (query: QueryBuilderImpl<TableName>) => {
+      const indexName = query.getIndexName()
+      const limit = query.getLimit()
       const options: QueryOptions = {
-        indexName: query.getIndexName(),
+        ...(indexName !== undefined && { indexName }),
         indexFilters: query.getIndexFilters(),
         filters: query.getFilterExpressions(),
         order: query.getOrder(),
-        limit: query.getLimit(),
+        ...(limit !== undefined && { limit }),
       }
 
       return this.storage.queryDocuments(tableName, options)
@@ -96,7 +98,7 @@ export class DatabaseReader {
    * Returns null if the string is not a valid ID format
    */
   normalizeId<TableName extends string>(
-    tableName: TableName,
+    _tableName: TableName,
     id: string
   ): Id<TableName> | null {
     // Validate input type

@@ -348,8 +348,3 @@ export function httpAction(handler: HttpActionHandler): RegisteredHttpAction {
   }
 }
 
-// ============================================================================
-// Export Types
-// ============================================================================
-
-export type { HttpActionCtx, HttpActionHandler, HttpActionConfig, RouteDefinition }

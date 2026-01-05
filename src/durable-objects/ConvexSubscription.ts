@@ -25,7 +25,7 @@ interface WebSocketMessage {
 
 export class ConvexSubscription implements DurableObject {
   private state: DurableObjectState
-  private env: Env
+  protected env: Env
   private subscriptions: Map<string, Subscription> = new Map()
   private clientSubscriptions: Map<string, Set<string>> = new Map()
   private authenticatedClients: Map<string, string> = new Map() // clientId -> token
@@ -198,7 +198,7 @@ export class ConvexSubscription implements DurableObject {
    * Handle WebSocket connections
    */
   async fetch(request: Request): Promise<Response> {
-    const url = new URL(request.url)
+    new URL(request.url)  // validate URL
 
     // WebSocket upgrade
     if (request.headers.get('Upgrade') === 'websocket') {
@@ -315,7 +315,7 @@ export class ConvexSubscription implements DurableObject {
   /**
    * Handle WebSocket close
    */
-  async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
+  async webSocketClose(ws: WebSocket, _code: number, _reason: string): Promise<void> {
     const clientId = this.getClientId(ws)
     await this.unsubscribeClient(clientId)
     this.authenticatedClients.delete(clientId)
@@ -326,14 +326,16 @@ export class ConvexSubscription implements DurableObject {
    */
   private getClientId(ws: WebSocket): string {
     // Use WebSocket's attachment to store client ID
-    const attachment = this.state.getWebSocketAttachment(ws) as { clientId?: string } | undefined
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const state = this.state as any
+    const attachment = state.getWebSocketAttachment?.(ws) as { clientId?: string } | undefined
     if (attachment?.clientId) {
       return attachment.clientId
     }
 
     // Generate new client ID
     const clientId = crypto.randomUUID()
-    this.state.setWebSocketAttachment(ws, { clientId })
+    state.setWebSocketAttachment?.(ws, { clientId })
     return clientId
   }
 

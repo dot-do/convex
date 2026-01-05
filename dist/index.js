@@ -7,13 +7,13 @@ import { cors } from 'hono/cors';
 var RESERVED_TABLES = /* @__PURE__ */ new Set(["_documents", "_schema_versions", "_metadata"]);
 var ConvexDatabase = class {
   state;
-  _env;
+  env;
   sql;
   initialized = false;
   tables = /* @__PURE__ */ new Set();
   constructor(state, env) {
     this.state = state;
-    this._env = env;
+    this.env = env;
     this.sql = state.storage.sql;
   }
   /**
@@ -650,8 +650,7 @@ var ConvexDatabase = class {
    * Handle HTTP requests to this Durable Object
    */
   async fetch(request) {
-    const url = new URL(request.url);
-    url.pathname;
+    new URL(request.url);
     try {
       await this.ensureInitialized();
       if (request.method === "POST") {
@@ -907,7 +906,7 @@ var ConvexSubscription = class {
   /**
    * Handle WebSocket close
    */
-  async webSocketClose(ws, code, reason) {
+  async webSocketClose(ws, _code, _reason) {
     const clientId = this.getClientId(ws);
     await this.unsubscribeClient(clientId);
     this.authenticatedClients.delete(clientId);
@@ -916,12 +915,13 @@ var ConvexSubscription = class {
    * Get client ID for a WebSocket
    */
   getClientId(ws) {
-    const attachment = this.state.getWebSocketAttachment(ws);
+    const state = this.state;
+    const attachment = state.getWebSocketAttachment?.(ws);
     if (attachment?.clientId) {
       return attachment.clientId;
     }
     const clientId = crypto.randomUUID();
-    this.state.setWebSocketAttachment(ws, { clientId });
+    state.setWebSocketAttachment?.(ws, { clientId });
     return clientId;
   }
   /**
@@ -1056,8 +1056,8 @@ var ConvexScheduler = class {
       runAt: row.run_at,
       status: row.status,
       createdAt: row.created_at,
-      completedAt: row.completed_at,
-      error: row.error,
+      ...row.completed_at !== null && { completedAt: row.completed_at },
+      ...row.error !== null && { error: row.error },
       retries: row.retries,
       maxRetries: row.max_retries
     };
@@ -1083,8 +1083,8 @@ var ConvexScheduler = class {
       runAt: row.run_at,
       status: row.status,
       createdAt: row.created_at,
-      completedAt: row.completed_at,
-      error: row.error,
+      ...row.completed_at !== null && { completedAt: row.completed_at },
+      ...row.error !== null && { error: row.error },
       retries: row.retries,
       maxRetries: row.max_retries
     }));
@@ -1378,8 +1378,8 @@ var ConvexStorage = class {
             return Response.json({ deleted });
           case "list":
             const result = await this.list({
-              limit: body.limit,
-              cursor: body.cursor
+              ...body.limit !== void 0 && { limit: body.limit },
+              ...body.cursor !== void 0 && { cursor: body.cursor }
             });
             return Response.json(result);
           default:

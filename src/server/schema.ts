@@ -105,7 +105,7 @@ function validateFieldPath(fieldPath: string, documentSchema: Record<string, Val
       throw new Error(`Field "${fullPath}" does not exist in document schema`)
     }
 
-    const validator = currentSchema[part]
+    const validator: Validator | undefined = currentSchema[part]
 
     // If this is not the last part, we need to check if it's an object
     if (i < pathParts.length - 1) {
@@ -117,8 +117,8 @@ function validateFieldPath(fieldPath: string, documentSchema: Record<string, Val
       let innerShape: Record<string, Validator> | undefined = validatorAny.shape
 
       // Check if it's an optional wrapping an object
-      if (!innerShape && 'isOptional' in validator && validator.isOptional) {
-        const optionalInner = (validator as unknown as { inner?: Validator }).inner
+      if (!innerShape && validator && 'isOptional' in validator && validator.isOptional) {
+        const optionalInner: Validator | undefined = (validator as unknown as { inner?: Validator }).inner
         if (optionalInner) {
           innerShape = (optionalInner as unknown as { shape?: Record<string, Validator> }).shape
         }
@@ -386,7 +386,7 @@ export class TableBuilder<Doc extends DocumentDefinition> implements TableDefini
         throw new Error(`Field "${fullPath}" does not exist in the document schema`)
       }
 
-      const validator = currentSchema[part]
+      const validator: Validator | undefined = currentSchema[part]
 
       // If this is the last part, return the validator
       if (i === pathParts.length - 1) {
@@ -398,8 +398,8 @@ export class TableBuilder<Doc extends DocumentDefinition> implements TableDefini
       let innerShape: Record<string, Validator> | undefined = validatorAny.shape
 
       // Check if it's an optional wrapping an object
-      if (!innerShape && 'isOptional' in validator && validator.isOptional) {
-        const optionalInner = (validator as unknown as { inner?: Validator }).inner
+      if (!innerShape && validator && 'isOptional' in validator && validator.isOptional) {
+        const optionalInner: Validator | undefined = (validator as unknown as { inner?: Validator }).inner
         if (optionalInner) {
           innerShape = (optionalInner as unknown as { shape?: Record<string, Validator> }).shape
         }
@@ -734,7 +734,7 @@ export class TableBuilder<Doc extends DocumentDefinition> implements TableDefini
   // Callable config that also acts as a property getter
   // This is a bit of a hack to satisfy the test's expectation of both
   // `table.config({...})` and `table.config.ttl`
-  config: ((cfg: Record<string, unknown>) => this) & Record<string, unknown>
+  config!: ((cfg: Record<string, unknown>) => this) & Record<string, unknown>
 
   /**
    * Set table description.

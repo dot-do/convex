@@ -917,7 +917,7 @@ function validateFieldPath(fieldPath, documentSchema) {
     if (i < pathParts.length - 1) {
       const validatorAny = validator;
       let innerShape = validatorAny.shape;
-      if (!innerShape && "isOptional" in validator && validator.isOptional) {
+      if (!innerShape && validator && "isOptional" in validator && validator.isOptional) {
         const optionalInner = validator.inner;
         if (optionalInner) {
           innerShape = optionalInner.shape;
@@ -1052,7 +1052,7 @@ var TableBuilder = class _TableBuilder {
       }
       const validatorAny = validator;
       let innerShape = validatorAny.shape;
-      if (!innerShape && "isOptional" in validator && validator.isOptional) {
+      if (!innerShape && validator && "isOptional" in validator && validator.isOptional) {
         const optionalInner = validator.inner;
         if (optionalInner) {
           innerShape = optionalInner.shape;
@@ -1746,12 +1746,14 @@ var DatabaseReader = class {
    */
   query(tableName) {
     const dbFetch = async (query2) => {
+      const indexName = query2.getIndexName();
+      const limit = query2.getLimit();
       const options = {
-        indexName: query2.getIndexName(),
+        ...indexName !== void 0 && { indexName },
         indexFilters: query2.getIndexFilters(),
         filters: query2.getFilterExpressions(),
         order: query2.getOrder(),
-        limit: query2.getLimit()
+        ...limit !== void 0 && { limit }
       };
       return this.storage.queryDocuments(tableName, options);
     };
@@ -1761,7 +1763,7 @@ var DatabaseReader = class {
    * Normalize a string to a valid ID for a table
    * Returns null if the string is not a valid ID format
    */
-  normalizeId(tableName, id) {
+  normalizeId(_tableName, id) {
     if (typeof id !== "string") {
       return null;
     }
@@ -1883,17 +1885,17 @@ var InMemoryStorage = class {
 // src/server/database/DatabaseWriter.ts
 var SYSTEM_FIELDS = ["_id", "_creationTime"];
 var DatabaseWriter = class extends DatabaseReader {
-  storage;
+  writableStorage;
   constructor(storage) {
     super(storage);
-    this.storage = storage;
+    this.writableStorage = storage;
   }
   /**
    * Override get() to work with our storage implementation
    */
   async get(id) {
     const tableName = this.extractTableFromId(id);
-    const doc = this.storage.getDocument(tableName, id);
+    const doc = this.writableStorage.getDocumentByTableAndId(tableName, id);
     return doc;
   }
   /**
@@ -1911,7 +1913,7 @@ var DatabaseWriter = class extends DatabaseReader {
       _id: id,
       _creationTime: Date.now()
     };
-    this.storage.saveDocument(tableName, id, fullDocument);
+    this.writableStorage.saveDocument(tableName, id, fullDocument);
     return id;
   }
   /**
@@ -1927,7 +1929,7 @@ var DatabaseWriter = class extends DatabaseReader {
     this.validateNoSystemFields(fields, "patch");
     this.validateDocumentValues(fields);
     const tableName = this.extractTableFromId(id);
-    const existingDoc = this.storage.getDocument(tableName, id);
+    const existingDoc = this.writableStorage.getDocumentByTableAndId(tableName, id);
     if (!existingDoc) {
       throw new Error(`Document with ID ${id} not found`);
     }
@@ -1935,7 +1937,7 @@ var DatabaseWriter = class extends DatabaseReader {
       ...existingDoc,
       ...fields
     };
-    this.storage.saveDocument(tableName, id, updatedDoc);
+    this.writableStorage.saveDocument(tableName, id, updatedDoc);
   }
   /**
    * Replace a document entirely.
@@ -1947,7 +1949,7 @@ var DatabaseWriter = class extends DatabaseReader {
     this.validateNoSystemFields(document, "replace");
     this.validateDocumentValues(document);
     const tableName = this.extractTableFromId(id);
-    const existingDoc = this.storage.getDocument(tableName, id);
+    const existingDoc = this.writableStorage.getDocumentByTableAndId(tableName, id);
     if (!existingDoc) {
       throw new Error(`Document with ID ${id} not found`);
     }
@@ -1956,7 +1958,7 @@ var DatabaseWriter = class extends DatabaseReader {
       _id: existingDoc._id,
       _creationTime: existingDoc._creationTime
     };
-    this.storage.saveDocument(tableName, id, newDoc);
+    this.writableStorage.saveDocument(tableName, id, newDoc);
   }
   /**
    * Delete a document.
@@ -1964,7 +1966,7 @@ var DatabaseWriter = class extends DatabaseReader {
    */
   async delete(id) {
     const tableName = this.extractTableFromId(id);
-    this.storage.deleteDocument(tableName, id);
+    this.writableStorage.deleteDocument(tableName, id);
   }
   /**
    * Validate that document doesn't contain system fields

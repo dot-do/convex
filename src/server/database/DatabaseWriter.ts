@@ -11,12 +11,14 @@
  */
 
 import type { Id } from '../../types'
-import { DatabaseReader, type Storage as BaseStorage } from './DatabaseReader'
+import { DatabaseReader, type StorageBackend } from './DatabaseReader'
 
 /**
  * Extended storage interface with write operations
+ * Uses table+id pattern for direct document access
  */
-export interface Storage extends BaseStorage {
+export interface WritableStorageBackend extends StorageBackend {
+  getDocumentByTableAndId(table: string, id: string): Record<string, unknown> | null
   saveDocument(table: string, id: string, doc: Record<string, unknown>): void
   deleteDocument(table: string, id: string): void
 }
@@ -30,11 +32,11 @@ const SYSTEM_FIELDS = ['_id', '_creationTime'] as const
  * DatabaseWriter extends DatabaseReader with write operations
  */
 export class DatabaseWriter extends DatabaseReader {
-  protected storage: Storage
+  protected writableStorage: WritableStorageBackend
 
-  constructor(storage: Storage) {
+  constructor(storage: WritableStorageBackend) {
     super(storage)
-    this.storage = storage
+    this.writableStorage = storage
   }
 
   /**
@@ -45,7 +47,7 @@ export class DatabaseWriter extends DatabaseReader {
   ): Promise<Record<string, unknown> | null> {
     // Extract table name from ID (format: tableName_randomPart)
     const tableName = this.extractTableFromId(id)
-    const doc = this.storage.getDocument(tableName, id)
+    const doc = this.writableStorage.getDocumentByTableAndId(tableName, id)
     return doc
   }
 
@@ -76,7 +78,7 @@ export class DatabaseWriter extends DatabaseReader {
     }
 
     // Save to storage
-    this.storage.saveDocument(tableName, id, fullDocument)
+    this.writableStorage.saveDocument(tableName, id, fullDocument)
 
     return id
   }
@@ -104,7 +106,7 @@ export class DatabaseWriter extends DatabaseReader {
 
     // Get existing document
     const tableName = this.extractTableFromId(id)
-    const existingDoc = this.storage.getDocument(tableName, id)
+    const existingDoc = this.writableStorage.getDocumentByTableAndId(tableName, id)
 
     if (!existingDoc) {
       throw new Error(`Document with ID ${id} not found`)
@@ -117,7 +119,7 @@ export class DatabaseWriter extends DatabaseReader {
     }
 
     // Save updated document
-    this.storage.saveDocument(tableName, id, updatedDoc)
+    this.writableStorage.saveDocument(tableName, id, updatedDoc)
   }
 
   /**
@@ -138,7 +140,7 @@ export class DatabaseWriter extends DatabaseReader {
 
     // Get existing document to preserve system fields
     const tableName = this.extractTableFromId(id)
-    const existingDoc = this.storage.getDocument(tableName, id)
+    const existingDoc = this.writableStorage.getDocumentByTableAndId(tableName, id)
 
     if (!existingDoc) {
       throw new Error(`Document with ID ${id} not found`)
@@ -152,7 +154,7 @@ export class DatabaseWriter extends DatabaseReader {
     }
 
     // Save replaced document
-    this.storage.saveDocument(tableName, id, newDoc)
+    this.writableStorage.saveDocument(tableName, id, newDoc)
   }
 
   /**
@@ -161,7 +163,7 @@ export class DatabaseWriter extends DatabaseReader {
    */
   async delete(id: Id<string>): Promise<void> {
     const tableName = this.extractTableFromId(id)
-    this.storage.deleteDocument(tableName, id)
+    this.writableStorage.deleteDocument(tableName, id)
   }
 
   /**
