@@ -69,15 +69,15 @@ binding = "STORAGE_BUCKET"
 ### Server-Side: Defining Queries and Mutations
 
 ```typescript
-import { defineQuery, defineMutation } from 'convex.do/server'
+import { query, mutation } from 'convex.do/server'
 
 // Define a query
-export const getUsers = defineQuery(async ({ db }, id: string) => {
+export const getUsers = query(async ({ db }, id: string) => {
   return await db.query('users').filter(u => u.id === id).collect()
 })
 
 // Define a mutation
-export const createUser = defineMutation(async ({ db }, name: string) => {
+export const createUser = mutation(async ({ db }, name: string) => {
   const user = { id: crypto.randomUUID(), name, createdAt: new Date() }
   await db.insert('users', user)
   return user
@@ -128,16 +128,25 @@ export function UserList() {
 
 ### Real-Time Synchronization
 
-Subscribe to real-time updates via WebSocket:
+Subscribe to real-time updates using the `useQuery` hook, which automatically handles subscriptions:
 
 ```typescript
-import { useSubscription } from 'convex.do/sync'
+import { useQuery } from 'convex.do/react'
 
 export function LiveUserCount() {
-  const count = useSubscription('getUserCount')
+  const count = useQuery('getUserCount')
 
   return <div>Active users: {count}</div>
 }
+```
+
+For advanced subscription management, use the `SubscriptionManager` from the sync module:
+
+```typescript
+import { SubscriptionManager } from 'convex.do/sync'
+
+const subscriptionManager = new SubscriptionManager(convexClient)
+const subscription = await subscriptionManager.subscribe('getUserCount', {})
 ```
 
 ### Server-Side Actions
@@ -145,9 +154,9 @@ export function LiveUserCount() {
 Define server-side actions that can run for longer durations:
 
 ```typescript
-import { defineAction } from 'convex.do/server'
+import { action } from 'convex.do/server'
 
-export const sendEmail = defineAction(async ({ db }, userId: string) => {
+export const sendEmail = action(async ({ db }, userId: string) => {
   const user = await db.query('users').filter(u => u.id === userId).first()
 
   // Send email via external service
@@ -165,34 +174,34 @@ export const sendEmail = defineAction(async ({ db }, userId: string) => {
 
 ### Server Module (`convex.do/server`)
 
-#### `defineQuery(handler: QueryHandler): QueryDefinition`
+#### `query(handler: QueryHandler)`
 
 Define a query function that reads data from the database.
 
 ```typescript
-defineQuery(async ({ db, env }, arg1: Type1, arg2: Type2) => {
+query(async ({ db, env }, arg1: Type1, arg2: Type2) => {
   // Read-only database operations
   return result
 })
 ```
 
-#### `defineMutation(handler: MutationHandler): MutationDefinition`
+#### `mutation(handler: MutationHandler)`
 
 Define a mutation function that modifies data in the database.
 
 ```typescript
-defineMutation(async ({ db, env }, arg1: Type1, arg2: Type2) => {
+mutation(async ({ db, env }, arg1: Type1, arg2: Type2) => {
   // Read-write database operations
   return result
 })
 ```
 
-#### `defineAction(handler: ActionHandler): ActionDefinition`
+#### `action(handler: ActionHandler)`
 
 Define an action function that can call external APIs and run longer operations.
 
 ```typescript
-defineAction(async ({ db, env }, arg1: Type1, arg2: Type2) => {
+action(async ({ db, env }, arg1: Type1, arg2: Type2) => {
   // Long-running operations, external API calls
   return result
 })
@@ -214,6 +223,38 @@ class ConvexClient {
 ```
 
 ### React Module (`convex.do/react`)
+
+#### `ConvexProvider`
+
+Provider component to set up Convex client in your React app.
+
+```typescript
+import { ConvexProvider } from 'convex.do/react'
+import { ConvexClient } from 'convex.do/client'
+
+const client = new ConvexClient(import.meta.env.VITE_CONVEX_URL)
+
+export function App() {
+  return (
+    <ConvexProvider client={client}>
+      <YourApp />
+    </ConvexProvider>
+  )
+}
+```
+
+#### `useConvex(): ConvexClient`
+
+Hook to access the Convex client instance from within components.
+
+```typescript
+import { useConvex } from 'convex.do/react'
+
+export function MyComponent() {
+  const convex = useConvex()
+  // Use convex.query(), convex.mutation(), convex.action()
+}
+```
 
 #### `useQuery<T>(path: string, args?: Record<string, any>): T | undefined`
 
@@ -241,15 +282,27 @@ const sendEmail = useAction('sendEmail')
 await sendEmail({ userId: 'user123' })
 ```
 
-### Sync Module (`convex.do/sync`)
+#### `usePaginatedQuery<T>(path: string, args?: Record<string, any>, options?: PaginationOptions): PaginationResult<T>`
 
-#### `useSubscription<T>(path: string, args?: Record<string, any>): T | undefined`
-
-Hook for WebSocket-based real-time subscriptions.
+Hook for paginated queries with built-in pagination state management.
 
 ```typescript
-const liveData = useSubscription('getLiveUsers', { limit: 10 })
+const { results, status, loadMore } = usePaginatedQuery('getUsers', {}, { initialNumItems: 10 })
+
+// Load more items as needed
+const handleLoadMore = () => {
+  loadMore(10)
+}
 ```
+
+### Sync Module (`convex.do/sync`)
+
+The sync module provides low-level subscription and conflict resolution utilities:
+
+- `ConflictResolver`: Manages conflict resolution strategies for synchronization
+- `SubscriptionManager`: Handles WebSocket connections and subscription management
+- `Subscription`: Individual subscription instances with state tracking
+- `SubscriptionState`: Types and utilities for subscription state management
 
 ### Values Module (`convex.do/values`)
 
