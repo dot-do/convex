@@ -97,3 +97,74 @@ export type {
 } from './database/QueryBuilder'
 
 export { QueryBuilderImpl } from './database/QueryBuilder'
+
+// Export registered function types and utilities
+export type {
+  RegisteredQuery,
+  RegisteredMutation,
+  RegisteredAction,
+  AnyRegisteredFunction,
+  FunctionArgs,
+  FunctionReturns,
+  GenericRegisteredFunction,
+} from './functions'
+
+export {
+  isQuery,
+  isMutation,
+  isAction,
+  isRegisteredFunction,
+  isPublicFunction,
+  isInternalFunction,
+  getFunctionType,
+  getFunctionVisibility,
+  getArgsValidator,
+  getReturnsValidator,
+  getFunctionHandler,
+  // Function Registry
+  FunctionRegistry,
+  FunctionRegistryError,
+} from './functions'
+
+// Export Function Registry types
+export type {
+  RegisteredFunction,
+  RegisteredHttpEndpoint,
+  FunctionEntry,
+  HttpEndpointEntry,
+  HttpEndpointMatch,
+  RegistrationOptions,
+  HttpMethod,
+} from './functions'
+
+// Export FunctionReference types and api generation utilities
+export type {
+  FunctionReference as FunctionRef,
+  GenericFunctionReference,
+  AnyFunctionReference,
+  QueryReference,
+  MutationReference,
+  ActionReference,
+  SchedulableFunctionReference,
+  FunctionReferenceArgs,
+  FunctionReturnType,
+  FilterByFunctionType,
+  OptionalRestArgs,
+  ArgsAndOptions,
+  ApiRegisteredFunction,
+  ParsedFunctionPath,
+  NestedApi,
+} from './functions'
+
+export {
+  makeFunctionReference,
+  makeQueryReference,
+  makeMutationReference,
+  makeActionReference,
+  getFunctionName,
+  parseFunctionPath,
+  createFunctionHandle,
+  functionName,
+  createApi,
+  createInternalApi,
+} from './functions'
