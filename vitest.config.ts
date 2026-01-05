@@ -6,6 +6,12 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.{test,spec}.{ts,tsx}', 'tests/**/*.{test,spec}.{ts,tsx}'],
     exclude: ['node_modules', 'dist'],
+    // Use jsdom for React tests
+    environmentMatchGlobs: [
+      ['tests/react/**', 'jsdom'],
+      ['src/react/**', 'jsdom'],
+    ],
+    setupFiles: ['tests/react/setup.ts'],
     // CRITICAL: Limit workers to prevent 50GB memory consumption
     // With 28 CPUs, vitest spawns ~28 workers by default
     // Each worker loads the massive test files (~1200 lines with heavy mocking)
