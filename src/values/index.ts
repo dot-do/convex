@@ -11,11 +11,11 @@
  * Base interface for all validators.
  * Provides type inference and validation logic.
  */
-export interface Validator<T = unknown> {
+export interface Validator<T = unknown, IsOptional extends boolean = boolean> {
   /** The inferred TypeScript type */
   readonly _type: T
   /** Whether this validator is optional */
-  readonly isOptional: boolean
+  readonly isOptional: IsOptional
   /** Parse and validate a value, throwing on invalid input */
   parse(value: unknown): T
   /** Check if a value is valid without throwing */
@@ -88,9 +88,9 @@ function getPathString(): string {
 // Base Validator Implementation
 // ============================================================================
 
-abstract class BaseValidator<T> implements Validator<T> {
+abstract class BaseValidator<T, IsOptional extends boolean = false> implements Validator<T, IsOptional> {
   abstract readonly _type: T
-  readonly isOptional = false
+  readonly isOptional: IsOptional = false as IsOptional
 
   abstract parse(value: unknown): T
   abstract describe(): string
@@ -307,7 +307,7 @@ class BytesValidator extends BaseValidator<ArrayBuffer> {
       return value
     }
     if (ArrayBuffer.isView(value)) {
-      return value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength)
+      return value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength) as ArrayBuffer
     }
     throw new Error(`Expected bytes/ArrayBuffer, got ${typeof value}`)
   }
@@ -625,9 +625,9 @@ class UnionValidator<T extends Validator[]> extends BaseValidator<InferUnion<T>>
   }
 }
 
-class OptionalValidator<T> extends BaseValidator<T | undefined> {
+class OptionalValidator<T> extends BaseValidator<T | undefined, true> {
   readonly _type!: T | undefined
-  override readonly isOptional = true
+  override readonly isOptional: true = true
   private inner: Validator<T>
 
   constructor(inner: Validator<T>) {
@@ -658,9 +658,9 @@ class OptionalValidator<T> extends BaseValidator<T | undefined> {
   }
 }
 
-class DefaultValidator<T> extends BaseValidator<T> {
+class DefaultValidator<T> extends BaseValidator<T, true> {
   readonly _type!: T
-  override readonly isOptional = true
+  override readonly isOptional: true = true
   private inner: Validator<T>
   private defaultValue: T
 
@@ -788,9 +788,9 @@ class NullableValidator<T> extends BaseValidator<T | null> {
   }
 }
 
-class NullishValidator<T> extends BaseValidator<T | null | undefined> {
+class NullishValidator<T> extends BaseValidator<T | null | undefined, true> {
   readonly _type!: T | null | undefined
-  override readonly isOptional = true
+  override readonly isOptional: true = true
   private inner: Validator<T>
 
   constructor(inner: Validator<T>) {
@@ -817,28 +817,17 @@ class DiscriminatedUnionValidator<T extends Validator[]> extends BaseValidator<I
   readonly _type!: InferUnion<T>
   private discriminator: string
   private validators: T
-  private variantMap: Map<unknown, Validator>
 
   constructor(discriminator: string, validators: T) {
     super()
     this.discriminator = discriminator
     this.validators = validators
-    this.variantMap = new Map()
-
-    // Build a map from discriminator values to validators for fast lookup
-    for (const validator of validators) {
-      // Try to extract the discriminator literal value from the object schema
-      // This is a simple implementation - for complex cases we fall back to linear search
-    }
   }
 
   parse(value: unknown): InferUnion<T> {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) {
       throw new Error(`Expected object with discriminator "${this.discriminator}", got ${value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value}`)
     }
-
-    const obj = value as Record<string, unknown>
-    const discriminatorValue = obj[this.discriminator]
 
     // Try each validator
     const errors: string[] = []
@@ -918,5 +907,3 @@ export type InferArgs<T extends ArgsValidator> = T extends Validator<infer U>
   ? { [K in keyof T]: Infer<T[K]> }
   : never
 
-// Re-export types
-export type { Validator, Infer }

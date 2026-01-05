@@ -81,7 +81,7 @@ const RESERVED_TABLES = new Set(['_documents', '_schema_versions', '_metadata'])
 
 export class ConvexDatabase implements DurableObject {
   private state: DurableObjectState
-  private env: Env
+  protected env: Env
   private sql: SqlStorage
   private initialized = false
   private tables: Set<string> = new Set()
@@ -260,7 +260,7 @@ export class ConvexDatabase implements DurableObject {
    * Handles BigInt and ArrayBuffer special cases
    */
   private serializeDocument(doc: Record<string, unknown>): string {
-    return JSON.stringify(doc, (key, value) => {
+    return JSON.stringify(doc, (_key, value) => {
       if (typeof value === 'bigint') {
         return { __type: 'bigint', value: value.toString() }
       }
@@ -276,7 +276,7 @@ export class ConvexDatabase implements DurableObject {
    * Handles BigInt and ArrayBuffer special cases
    */
   private deserializeDocument(data: string): Record<string, unknown> {
-    return JSON.parse(data, (key, value) => {
+    return JSON.parse(data, (_key, value) => {
       if (value && typeof value === 'object' && value.__type === 'bigint') {
         return BigInt(value.value)
       }
@@ -449,7 +449,7 @@ export class ConvexDatabase implements DurableObject {
 
     // Build WHERE clause from filters
     if (filters.length > 0) {
-      const whereClauses = filters.map((filter, i) => {
+      const whereClauses = filters.map((filter) => {
         const op = this.translateOperator(filter.operator)
         params.push(JSON.stringify(filter.value))
         // Use json_extract for nested field access
@@ -731,11 +731,12 @@ export class ConvexDatabase implements DurableObject {
       'SELECT MAX(version) as version FROM _schema_versions'
     ).toArray()
 
-    if (result.length === 0 || result[0]?.version === null) {
+    const firstRow = result[0]
+    if (result.length === 0 || firstRow === undefined || firstRow.version === null) {
       return 0
     }
 
-    return result[0].version as number
+    return firstRow.version as number
   }
 
   /**
@@ -887,8 +888,7 @@ export class ConvexDatabase implements DurableObject {
    * Handle HTTP requests to this Durable Object
    */
   async fetch(request: Request): Promise<Response> {
-    const url = new URL(request.url)
-    const path = url.pathname
+    new URL(request.url)  // validate URL
 
     try {
       await this.ensureInitialized()

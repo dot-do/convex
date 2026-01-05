@@ -164,7 +164,7 @@ export class ConvexClient {
       queryPath: query._path,
       args,
       callback: callback as SubscriptionCallback<unknown>,
-      options,
+      ...(options !== undefined && { options }),
     }
 
     if (this.isConnected) {
@@ -291,7 +291,7 @@ export class ConvexClient {
     try {
       this.ws = new this.options.WebSocket(this.wsUrl)
 
-      this.ws.onopen = () => {
+      this.ws.addEventListener('open', () => {
         this.isConnected = true
         this.reconnectAttempts = 0
 
@@ -330,13 +330,13 @@ export class ConvexClient {
             this.send({ type: 'ping' })
           }
         }, 30000)
-      }
+      })
 
-      this.ws.onmessage = (event) => {
+      this.ws.addEventListener('message', (event: MessageEvent) => {
         this.handleMessage(event.data as string)
-      }
+      })
 
-      this.ws.onclose = () => {
+      this.ws.addEventListener('close', () => {
         this.isConnected = false
 
         if (this.pingInterval) {
@@ -355,11 +355,11 @@ export class ConvexClient {
           const delay = this.options.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1)
           this.reconnectTimeout = setTimeout(() => this.connect(), delay)
         }
-      }
+      })
 
-      this.ws.onerror = (event) => {
+      this.ws.addEventListener('error', (event: Event) => {
         console.error('WebSocket error:', event)
-      }
+      })
     } catch (error) {
       console.error('Failed to connect:', error)
       if (this.options.autoReconnect && this.reconnectAttempts < this.options.maxReconnectAttempts) {

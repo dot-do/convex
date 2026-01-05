@@ -32,7 +32,7 @@ app.get('/', (c) => {
 
 // Query endpoint
 app.post('/api/query', async (c) => {
-  const { path, args, format } = await c.req.json<{
+  const { path, args, format: _format } = await c.req.json<{
     path: string
     args: unknown
     format?: 'json' | 'convex'
@@ -48,7 +48,7 @@ app.post('/api/query', async (c) => {
 
 // Mutation endpoint
 app.post('/api/mutation', async (c) => {
-  const { path, args, format } = await c.req.json<{
+  const { path, args, format: _format } = await c.req.json<{
     path: string
     args: unknown
     format?: 'json' | 'convex'
@@ -64,7 +64,7 @@ app.post('/api/mutation', async (c) => {
 
 // Action endpoint
 app.post('/api/action', async (c) => {
-  const { path, args, format } = await c.req.json<{
+  const { path, args, format: _format } = await c.req.json<{
     path: string
     args: unknown
     format?: 'json' | 'convex'
