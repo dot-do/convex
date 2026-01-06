@@ -542,7 +542,7 @@ export class StepExecutor {
     await this.saveExecution(this.execution)
 
     try {
-      const results = (await Promise.all(steps.map((s) => s()))) as T
+      const results = (await Promise.all(steps.map((s) => s()))) as unknown as T
       this.completeStep(step, results)
       await this.saveExecution(this.execution)
       return results

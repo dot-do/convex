@@ -8,6 +8,40 @@
  */
 
 // ============================================================================
+// Browser WebSocket Type Declaration
+// ============================================================================
+
+/**
+ * Browser-style WebSocket interface for client-side usage.
+ * The Cloudflare Workers WebSocket type uses addEventListener, but client code
+ * running in browsers uses the traditional onopen/onclose/onmessage/onerror pattern.
+ */
+interface BrowserWebSocket {
+  readonly readyState: number
+  readonly protocol: string
+  binaryType: BinaryType
+  onopen: ((this: BrowserWebSocket, ev: Event) => unknown) | null
+  onclose: ((this: BrowserWebSocket, ev: CloseEvent) => unknown) | null
+  onmessage: ((this: BrowserWebSocket, ev: MessageEvent) => unknown) | null
+  onerror: ((this: BrowserWebSocket, ev: Event) => unknown) | null
+  close(code?: number, reason?: string): void
+  send(data: string | ArrayBufferLike | ArrayBufferView): void
+}
+
+/**
+ * Type alias for BinaryType that works in both browser and Cloudflare environments.
+ */
+type BinaryType = 'blob' | 'arraybuffer'
+
+declare const WebSocket: {
+  new(url: string, protocols?: string | string[]): BrowserWebSocket
+  readonly CLOSED: number
+  readonly CLOSING: number
+  readonly CONNECTING: number
+  readonly OPEN: number
+}
+
+// ============================================================================
 // Types and Interfaces
 // ============================================================================
 
@@ -87,10 +121,10 @@ type EventListener = (...args: unknown[]) => void
  */
 export class WebSocketHandler {
   private _url: string
-  private _options: Required<WebSocketOptions>
+  private _options: Omit<Required<WebSocketOptions>, 'protocols'> & { protocols: string | string[] | undefined }
   private _state: ConnectionState = ConnectionState.Disconnected
-  private _ws: WebSocket | null = null
-  private _messageQueue: Array<string | ArrayBufferLike | ArrayBufferView> = []
+  private _ws: BrowserWebSocket | null = null
+  private _messageQueue: Array<string | ArrayBuffer | ArrayBufferView> = []
   private _reconnectAttempts: number = 0
   private _reconnectTimeout: ReturnType<typeof setTimeout> | null = null
   private _connectionTimeout: ReturnType<typeof setTimeout> | null = null
@@ -134,7 +168,7 @@ export class WebSocketHandler {
 
     this._url = url
     this._options = {
-      protocols: options.protocols,
+      protocols: options.protocols ?? undefined,
       reconnect: options.reconnect ?? false,
       reconnectDelay: options.reconnectDelay ?? 1000,
       maxReconnectAttempts: options.maxReconnectAttempts ?? 10,
@@ -480,20 +514,24 @@ export class WebSocketHandler {
   // Private Methods
   // ============================================================================
 
-  private _serializeMessage(message: WebSocketMessage): string | ArrayBufferLike | ArrayBufferView {
+  private _serializeMessage(message: WebSocketMessage): string | ArrayBuffer | ArrayBufferView {
     if (typeof message === 'string') {
       return message
     }
 
-    if (message instanceof ArrayBuffer || ArrayBuffer.isView(message)) {
-      return message as ArrayBufferLike | ArrayBufferView
+    if (message instanceof ArrayBuffer) {
+      return message
+    }
+
+    if (ArrayBuffer.isView(message)) {
+      return message
     }
 
     // Serialize objects to JSON
     return JSON.stringify(message)
   }
 
-  private _enqueueMessage(message: string | ArrayBufferLike | ArrayBufferView): void {
+  private _enqueueMessage(message: string | ArrayBuffer | ArrayBufferView): void {
     this._messageQueue.push(message)
 
     // Enforce max queue size (drop oldest messages)

@@ -194,8 +194,8 @@ export function serializeBytes(value: ArrayBuffer | ArrayBufferView): { $bytes: 
   if (value instanceof ArrayBuffer) {
     buffer = value
   } else {
-    // TypedArray or DataView
-    buffer = value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength)
+    // TypedArray or DataView - slice returns ArrayBufferLike, cast to ArrayBuffer
+    buffer = value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength) as ArrayBuffer
   }
 
   const bytes = new Uint8Array(buffer)
@@ -719,7 +719,7 @@ export function deserializeMessage(data: string): SyncMessage {
     })
   }
 
-  return obj as SyncMessage
+  return obj as unknown as SyncMessage
 }
 
 /**
@@ -763,7 +763,7 @@ function validateMessageFields(obj: Record<string, unknown>, data: string): void
 export function serializeToBinary(message: SyncMessage): ArrayBuffer {
   const json = serializeMessage(message)
   const encoder = new TextEncoder()
-  return encoder.encode(json).buffer
+  return encoder.encode(json).buffer as ArrayBuffer
 }
 
 /**

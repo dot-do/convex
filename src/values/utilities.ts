@@ -154,13 +154,14 @@ function canonicalize(value: unknown): string {
   }
 
   if (type === 'number') {
-    if (Number.isNaN(value)) {
+    const num = value as number
+    if (Number.isNaN(num)) {
       return 'n:NaN'
     }
-    if (!Number.isFinite(value)) {
-      return value > 0 ? 'n:Infinity' : 'n:-Infinity'
+    if (!Number.isFinite(num)) {
+      return num > 0 ? 'n:Infinity' : 'n:-Infinity'
     }
-    return `n:${value}`
+    return `n:${num}`
   }
 
   if (type === 'boolean') {
@@ -233,15 +234,16 @@ function serializeValue(value: unknown, seen: WeakSet<object>): unknown {
   }
 
   if (type === 'number') {
-    if (Number.isNaN(value)) {
+    const num = value as number
+    if (Number.isNaN(num)) {
       return { [TYPE_MARKERS.NAN]: true }
     }
-    if (!Number.isFinite(value)) {
-      return value > 0
+    if (!Number.isFinite(num)) {
+      return num > 0
         ? { [TYPE_MARKERS.INFINITY]: true }
         : { [TYPE_MARKERS.NEG_INFINITY]: true }
     }
-    return value
+    return num
   }
 
   if (type === 'bigint') {

@@ -179,6 +179,7 @@ class EventEmitter<Events extends Record<string, unknown>> {
 }
 
 interface OptimisticUpdateEvents {
+  [key: string]: unknown
   applied: UpdateAppliedEvent
   confirmed: UpdateConfirmedEvent
   reverted: UpdateRevertedEvent

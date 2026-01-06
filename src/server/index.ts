@@ -168,3 +168,19 @@ export {
   createApi,
   createInternalApi,
 } from './functions'
+
+// Export cron jobs API
+export { cronJobs, defineCronJobs } from './cronJobs'
+export type {
+  Crons,
+  CronSchedule,
+  CronJobDefinition,
+  CronExpression,
+  ParsedCronExpression,
+} from './cronJobs'
+export {
+  parseCronExpression,
+  validateCronExpression,
+  getNextRunTime,
+  CronParseError,
+} from './cronJobs'

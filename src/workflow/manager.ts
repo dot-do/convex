@@ -289,7 +289,7 @@ export class WorkflowManager {
     this.executions.set(execution.id, execution)
 
     // Start execution asynchronously (fire and forget)
-    this.executeWorkflowAsync(workflow, execution)
+    this.executeWorkflowAsync(workflow as RegisteredWorkflow<unknown, unknown>, execution)
 
     return this.createHandle<Returns>(execution.id)
   }

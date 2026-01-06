@@ -385,7 +385,7 @@ function extractFunctionPath(
  *
  * @internal
  */
-function createConvexError(errorData: QueryResponse): ConvexError {
+function createConvexError(errorData: QueryResponse): ConvexError<unknown> {
   const data = errorData.errorData ?? errorData.errorMessage ?? 'Unknown error'
   return new ConvexError(data)
 }

@@ -60,12 +60,13 @@ app.post('/api/query', async (c) => {
 
   // Validate arguments - if no validator, pass through the original args
   let validatedArgs: unknown
-  if (entry.fn._config.args === undefined) {
+  const config = entry.fn._config as { args?: unknown; strictArgs?: boolean; handler: (...args: unknown[]) => unknown }
+  if (config.args === undefined) {
     // No validator defined, pass through original args as-is
     validatedArgs = args ?? {}
   } else {
     try {
-      validatedArgs = validateArgs(entry.fn._config.args, args, entry.fn._config.strictArgs)
+      validatedArgs = validateArgs(config.args as Parameters<typeof validateArgs>[0], args, config.strictArgs)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       return c.json({ error: message }, 400)
@@ -74,7 +75,7 @@ app.post('/api/query', async (c) => {
 
   // Execute the query handler
   try {
-    const result = await entry.fn._config.handler(validatedArgs)
+    const result = await config.handler(validatedArgs)
     return c.json({ value: result })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -110,12 +111,13 @@ app.post('/api/mutation', async (c) => {
 
   // Validate arguments - if no validator, pass through the original args
   let validatedArgs: unknown
-  if (entry.fn._config.args === undefined) {
+  const mutConfig = entry.fn._config as { args?: unknown; strictArgs?: boolean; handler: (...args: unknown[]) => unknown }
+  if (mutConfig.args === undefined) {
     // No validator defined, pass through original args as-is
     validatedArgs = args ?? {}
   } else {
     try {
-      validatedArgs = validateArgs(entry.fn._config.args, args, entry.fn._config.strictArgs)
+      validatedArgs = validateArgs(mutConfig.args as Parameters<typeof validateArgs>[0], args, mutConfig.strictArgs)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       return c.json({ error: message }, 400)
@@ -124,7 +126,7 @@ app.post('/api/mutation', async (c) => {
 
   // Execute the mutation handler
   try {
-    const result = await entry.fn._config.handler(validatedArgs)
+    const result = await mutConfig.handler(validatedArgs)
     return c.json({ value: result })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -160,12 +162,13 @@ app.post('/api/action', async (c) => {
 
   // Validate arguments - if no validator, pass through the original args
   let validatedArgs: unknown
-  if (entry.fn._config.args === undefined) {
+  const actConfig = entry.fn._config as { args?: unknown; strictArgs?: boolean; handler: (...args: unknown[]) => unknown }
+  if (actConfig.args === undefined) {
     // No validator defined, pass through original args as-is
     validatedArgs = args ?? {}
   } else {
     try {
-      validatedArgs = validateArgs(entry.fn._config.args, args, entry.fn._config.strictArgs)
+      validatedArgs = validateArgs(actConfig.args as Parameters<typeof validateArgs>[0], args, actConfig.strictArgs)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       return c.json({ error: message }, 400)
@@ -174,7 +177,7 @@ app.post('/api/action', async (c) => {
 
   // Execute the action handler
   try {
-    const result = await entry.fn._config.handler(validatedArgs)
+    const result = await actConfig.handler(validatedArgs)
     return c.json({ value: result })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)

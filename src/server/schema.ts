@@ -1312,7 +1312,7 @@ export class TableBuilder<Doc extends DocumentDefinition> implements TableDefini
       dimensions: config.dimensions,
     }
     if (config.filterFields) {
-      ;(storedConfig as { filterFields: string[] }).filterFields = [...config.filterFields]
+      ;(storedConfig as unknown as { filterFields: string[] }).filterFields = [...config.filterFields]
     }
     this.vectorIndexes[name] = storedConfig
     return this

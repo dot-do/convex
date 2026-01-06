@@ -9,7 +9,9 @@ export { useQuery } from './useQuery'
 export { useMutation } from './useMutation'
 export { useAction } from './useAction'
 export { usePaginatedQuery } from './usePaginatedQuery'
-export { ConvexProviderWithAuth } from './ConvexProviderWithAuth'
+export { ConvexProviderWithAuth, useConvexAuth, useAuthState } from './ConvexProviderWithAuth'
+export { Authenticated, Unauthenticated, AuthLoading } from './auth-components'
+export type { AuthComponentProps } from './auth-components'
 
 // Re-export client for convenience
 export { ConvexClient } from '../client/ConvexClient'

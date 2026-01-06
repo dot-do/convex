@@ -508,9 +508,10 @@ export class RequestBatcher {
     handler: EventHandler<BatcherEvents[K]>
   ): void {
     if (!this.eventHandlers[event]) {
-      this.eventHandlers[event] = new Set()
+      // Use type assertion through unknown to avoid distributive conditional type issues
+      ;(this.eventHandlers as Record<K, Set<EventHandler<BatcherEvents[K]>>>)[event] = new Set()
     }
-    this.eventHandlers[event]!.add(handler as EventHandler<BatcherEvents[keyof BatcherEvents]>)
+    ;(this.eventHandlers[event] as Set<EventHandler<BatcherEvents[K]>>).add(handler)
   }
 
   /**
@@ -520,7 +521,7 @@ export class RequestBatcher {
     event: K,
     handler: EventHandler<BatcherEvents[K]>
   ): void {
-    this.eventHandlers[event]?.delete(handler as EventHandler<BatcherEvents[keyof BatcherEvents]>)
+    ;(this.eventHandlers[event] as Set<EventHandler<BatcherEvents[K]>> | undefined)?.delete(handler)
   }
 
   // ============================================================================

@@ -71,7 +71,7 @@ function getTypeName(value: unknown): string {
 
 abstract class BaseValidator<T> implements Validator<T> {
   abstract readonly _type: T
-  readonly isOptional = false
+  readonly isOptional: boolean = false
 
   abstract parse(value: unknown): T
   abstract describe(): string
@@ -96,7 +96,7 @@ abstract class BaseValidator<T> implements Validator<T> {
 
 class OptionalValidator<T> extends BaseValidator<T | undefined> {
   readonly _type!: T | undefined
-  override readonly isOptional = true
+  override readonly isOptional: boolean = true
   private inner: Validator<T>
 
   constructor(inner: Validator<T>) {
@@ -324,7 +324,8 @@ class BytesValidator extends BaseValidator<ArrayBuffer> {
     if (ArrayBuffer.isView(value)) {
       // Handle TypedArrays and DataView
       // Create a new ArrayBuffer with only the relevant portion
-      return value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength)
+      // Note: buffer.slice returns ArrayBufferLike, cast to ArrayBuffer
+      return value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength) as ArrayBuffer
     }
     throw new Error(`Expected bytes/ArrayBuffer, got ${getTypeName(value)}`)
   }

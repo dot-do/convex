@@ -23,6 +23,31 @@
 import type { FunctionReference, FunctionType } from '../server/functions/api'
 
 // ============================================================================
+// Browser WebSocket Type Declaration
+// ============================================================================
+
+/**
+ * Browser-style WebSocket interface for client-side usage.
+ */
+interface BrowserWebSocket {
+  readonly readyState: number
+  onopen: ((this: BrowserWebSocket, ev: Event) => unknown) | null
+  onclose: ((this: BrowserWebSocket, ev: CloseEvent) => unknown) | null
+  onmessage: ((this: BrowserWebSocket, ev: MessageEvent) => unknown) | null
+  onerror: ((this: BrowserWebSocket, ev: Event) => unknown) | null
+  close(code?: number, reason?: string): void
+  send(data: string | ArrayBuffer | ArrayBufferView): void
+}
+
+declare const WebSocket: {
+  new(url: string, protocols?: string | string[]): BrowserWebSocket
+  readonly CLOSED: number
+  readonly CLOSING: number
+  readonly CONNECTING: number
+  readonly OPEN: number
+}
+
+// ============================================================================
 // Types and Interfaces
 // ============================================================================
 
@@ -158,7 +183,7 @@ export class ConvexClient {
     onError?: (error: Error) => void
   }
   private _state: ConnectionState = ConnectionState.Disconnected
-  private _ws: WebSocket | null = null
+  private _ws: BrowserWebSocket | null = null
   private _closed: boolean = false
   private _authToken: string | null = null
   private _isReconnecting: boolean = false
@@ -396,10 +421,10 @@ export class ConvexClient {
     }
 
     if (this._state === ConnectionState.Connected) {
-      this._subscriptions.set(subscriptionId, subscription as InternalSubscription)
-      this._sendSubscribe(subscription)
+      this._subscriptions.set(subscriptionId, subscription as InternalSubscription<unknown>)
+      this._sendSubscribe(subscription as InternalSubscription<unknown>)
     } else {
-      this._pendingSubscriptions.set(subscriptionId, subscription as InternalSubscription)
+      this._pendingSubscriptions.set(subscriptionId, subscription as InternalSubscription<unknown>)
     }
 
     return subscriptionId

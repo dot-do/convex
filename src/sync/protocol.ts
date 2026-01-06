@@ -780,7 +780,7 @@ export class SyncProtocol {
       }
     }
 
-    return obj as SyncMessage
+    return obj as unknown as SyncMessage
   }
 
   /**

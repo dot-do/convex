@@ -176,7 +176,7 @@ export function createValidator<T>(options: CreateValidatorOptions<T>): Validato
   const { parse: parseFn, isOptional = false, errorCode, expectedType, collectAllErrors: defaultCollectAll = false } = options
 
   return {
-    isOptional,
+    isOptional: isOptional as false,
 
     parse(value: unknown): T {
       try {
