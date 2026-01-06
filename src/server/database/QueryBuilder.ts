@@ -73,6 +73,14 @@
  */
 
 import type { Id, PaginationOptions, PaginationResult } from '../../types'
+import {
+  SearchFilterBuilderImpl,
+  getSearchIndex,
+  executeSearch,
+  addScoresToDocuments,
+  type SearchFilterState,
+  type SearchIndexConfig,
+} from '../search/fulltext'
 
 // ============================================================================
 // Index Range Types
@@ -908,6 +916,18 @@ export class QueryBuilderImpl<TableName extends string> implements QueryBuilder<
 
   /** Database fetch function for query execution */
   private readonly dbFetch: (query: QueryBuilderImpl<TableName>) => Promise<unknown[]>
+
+  /** Search index name, if using full-text search */
+  private searchIndexName?: string
+
+  /** Search index configuration */
+  private searchIndexConfig?: SearchIndexConfig
+
+  /** Search filter state */
+  private searchFilterState?: SearchFilterState
+
+  /** Whether this is a search query (affects ordering) */
+  private isSearchQuery: boolean = false
 
   /**
    * Creates a new QueryBuilderImpl.
