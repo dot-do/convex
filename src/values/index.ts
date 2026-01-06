@@ -4,6 +4,30 @@
  */
 
 // ============================================================================
+// Validator Brand Symbol
+// ============================================================================
+
+/**
+ * Unique symbol used to identify genuine Validator instances.
+ * This prevents duck-typing attacks where objects with a parse() method
+ * could be mistaken for real validators.
+ */
+export const VALIDATOR_BRAND = Symbol.for('convex.validator')
+
+/**
+ * Type guard to check if a value is a genuine Validator instance.
+ * Uses Symbol-based branding for security against duck-typing attacks.
+ */
+export function isValidator(value: unknown): value is Validator {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    VALIDATOR_BRAND in value &&
+    (value as Record<symbol, unknown>)[VALIDATOR_BRAND] === true
+  )
+}
+
+// ============================================================================
 // Base Validator Interface
 // ============================================================================
 
@@ -12,6 +36,8 @@
  * Provides type inference and validation logic.
  */
 export interface Validator<T = unknown, IsOptional extends boolean = boolean> {
+  /** Symbol brand to identify genuine validators */
+  readonly [VALIDATOR_BRAND]: true
   /** The inferred TypeScript type */
   readonly _type: T
   /** Whether this validator is optional */
@@ -89,6 +115,8 @@ function getPathString(): string {
 // ============================================================================
 
 abstract class BaseValidator<T, IsOptional extends boolean = false> implements Validator<T, IsOptional> {
+  /** Symbol brand to identify genuine validators */
+  readonly [VALIDATOR_BRAND] = true as const
   abstract readonly _type: T
   readonly isOptional: IsOptional = false as IsOptional
 

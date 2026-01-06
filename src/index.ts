@@ -6,6 +6,8 @@
 
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
+import { FunctionRegistry } from './server/functions/registry'
+import { validateArgs } from './server/functions/shared'
 
 // Types
 export type { Env } from './env'
@@ -38,12 +40,46 @@ app.post('/api/query', async (c) => {
     format?: 'json' | 'convex'
   }>()
 
-  // TODO: Implement query execution
-  return c.json({
-    status: 'not_implemented',
-    path,
-    args,
-  })
+  const registry = FunctionRegistry.getInstance()
+  const entry = registry.getFunction(path)
+
+  // Check if function exists
+  if (!entry) {
+    return c.json({ error: `Function "${path}" not found` }, 404)
+  }
+
+  // Check visibility - internal functions cannot be called from public API
+  if (entry.fn._visibility === 'internal') {
+    return c.json({ error: `Cannot call internal function "${path}" from public API` }, 403)
+  }
+
+  // Validate function type
+  if (entry.fn._type !== 'query') {
+    return c.json({ error: `Function "${path}" is not a query` }, 400)
+  }
+
+  // Validate arguments - if no validator, pass through the original args
+  let validatedArgs: unknown
+  if (entry.fn._config.args === undefined) {
+    // No validator defined, pass through original args as-is
+    validatedArgs = args ?? {}
+  } else {
+    try {
+      validatedArgs = validateArgs(entry.fn._config.args, args, entry.fn._config.strictArgs)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      return c.json({ error: message }, 400)
+    }
+  }
+
+  // Execute the query handler
+  try {
+    const result = await entry.fn._config.handler(validatedArgs)
+    return c.json({ value: result })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return c.json({ error: message }, 500)
+  }
 })
 
 // Mutation endpoint
@@ -54,12 +90,46 @@ app.post('/api/mutation', async (c) => {
     format?: 'json' | 'convex'
   }>()
 
-  // TODO: Implement mutation execution
-  return c.json({
-    status: 'not_implemented',
-    path,
-    args,
-  })
+  const registry = FunctionRegistry.getInstance()
+  const entry = registry.getFunction(path)
+
+  // Check if function exists
+  if (!entry) {
+    return c.json({ error: `Function "${path}" not found` }, 404)
+  }
+
+  // Check visibility - internal functions cannot be called from public API
+  if (entry.fn._visibility === 'internal') {
+    return c.json({ error: `Cannot call internal function "${path}" from public API` }, 403)
+  }
+
+  // Validate function type
+  if (entry.fn._type !== 'mutation') {
+    return c.json({ error: `Function "${path}" is not a mutation` }, 400)
+  }
+
+  // Validate arguments - if no validator, pass through the original args
+  let validatedArgs: unknown
+  if (entry.fn._config.args === undefined) {
+    // No validator defined, pass through original args as-is
+    validatedArgs = args ?? {}
+  } else {
+    try {
+      validatedArgs = validateArgs(entry.fn._config.args, args, entry.fn._config.strictArgs)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      return c.json({ error: message }, 400)
+    }
+  }
+
+  // Execute the mutation handler
+  try {
+    const result = await entry.fn._config.handler(validatedArgs)
+    return c.json({ value: result })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return c.json({ error: message }, 500)
+  }
 })
 
 // Action endpoint
@@ -70,12 +140,46 @@ app.post('/api/action', async (c) => {
     format?: 'json' | 'convex'
   }>()
 
-  // TODO: Implement action execution
-  return c.json({
-    status: 'not_implemented',
-    path,
-    args,
-  })
+  const registry = FunctionRegistry.getInstance()
+  const entry = registry.getFunction(path)
+
+  // Check if function exists
+  if (!entry) {
+    return c.json({ error: `Function "${path}" not found` }, 404)
+  }
+
+  // Check visibility - internal functions cannot be called from public API
+  if (entry.fn._visibility === 'internal') {
+    return c.json({ error: `Cannot call internal function "${path}" from public API` }, 403)
+  }
+
+  // Validate function type
+  if (entry.fn._type !== 'action') {
+    return c.json({ error: `Function "${path}" is not an action` }, 400)
+  }
+
+  // Validate arguments - if no validator, pass through the original args
+  let validatedArgs: unknown
+  if (entry.fn._config.args === undefined) {
+    // No validator defined, pass through original args as-is
+    validatedArgs = args ?? {}
+  } else {
+    try {
+      validatedArgs = validateArgs(entry.fn._config.args, args, entry.fn._config.strictArgs)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      return c.json({ error: message }, 400)
+    }
+  }
+
+  // Execute the action handler
+  try {
+    const result = await entry.fn._config.handler(validatedArgs)
+    return c.json({ value: result })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return c.json({ error: message }, 500)
+  }
 })
 
 // WebSocket sync endpoint

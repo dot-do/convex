@@ -20,6 +20,7 @@ import { DatabaseReader } from '../../../src/server/database/DatabaseReader'
 interface MockStorage {
   documents: Map<string, Map<string, Record<string, unknown>>>
   getDocument(table: string, id: string): Record<string, unknown> | null
+  getDocumentByTableAndId(table: string, id: string): Record<string, unknown> | null
   saveDocument(table: string, id: string, doc: Record<string, unknown>): void
   deleteDocument(table: string, id: string): void
   queryDocuments(table: string): Record<string, unknown>[]
@@ -31,6 +32,10 @@ function createMockStorage(): MockStorage {
   return {
     documents,
     getDocument(table: string, id: string): Record<string, unknown> | null {
+      const tableData = documents.get(table)
+      return tableData?.get(id) ?? null
+    },
+    getDocumentByTableAndId(table: string, id: string): Record<string, unknown> | null {
       const tableData = documents.get(table)
       return tableData?.get(id) ?? null
     },
@@ -49,6 +54,107 @@ function createMockStorage(): MockStorage {
     },
   }
 }
+
+// ============================================================================
+// WritableStorageBackend Interface Tests (RED Phase - TDD)
+// ============================================================================
+
+/**
+ * These tests define the expected interface contract for WritableStorageBackend.
+ * The key method is `getDocumentByTableAndId(table, id)` which is required
+ * by DatabaseWriter but not implemented in the mock.
+ *
+ * TDD Issue: convex-w5zt
+ * Problem: MockStorage has `getDocument` but the interface requires `getDocumentByTableAndId`
+ */
+describe('WritableStorageBackend.getDocumentByTableAndId', () => {
+  let storage: MockStorage
+
+  beforeEach(() => {
+    storage = createMockStorage()
+  })
+
+  it('should return document when exists', () => {
+    // Setup: add a document directly to storage
+    storage.saveDocument('users', 'users_id123', {
+      _id: 'users_id123',
+      _creationTime: Date.now(),
+      name: 'Test User',
+    })
+
+    // The interface requires getDocumentByTableAndId - this should work
+    // but MockStorage only has getDocument, not getDocumentByTableAndId
+    const doc = (storage as unknown as { getDocumentByTableAndId: (table: string, id: string) => Record<string, unknown> | null })
+      .getDocumentByTableAndId('users', 'users_id123')
+
+    expect(doc).toEqual(expect.objectContaining({
+      _id: 'users_id123',
+      name: 'Test User',
+    }))
+  })
+
+  it('should return null when document not found', () => {
+    // The interface requires getDocumentByTableAndId to return null for missing docs
+    const doc = (storage as unknown as { getDocumentByTableAndId: (table: string, id: string) => Record<string, unknown> | null })
+      .getDocumentByTableAndId('users', 'nonexistent_id')
+
+    expect(doc).toBeNull()
+  })
+
+  it('should return null for non-existent table', () => {
+    // The interface requires getDocumentByTableAndId to return null for missing tables
+    const doc = (storage as unknown as { getDocumentByTableAndId: (table: string, id: string) => Record<string, unknown> | null })
+      .getDocumentByTableAndId('nonexistent_table', 'some_id')
+
+    expect(doc).toBeNull()
+  })
+
+  it('should be callable from DatabaseWriter.get()', () => {
+    // This test verifies that DatabaseWriter.get() correctly uses getDocumentByTableAndId
+    storage.saveDocument('users', 'users_abc123', {
+      _id: 'users_abc123',
+      _creationTime: Date.now(),
+      name: 'Alice',
+    })
+
+    const db = new DatabaseWriter(storage)
+    // This will fail because MockStorage doesn't have getDocumentByTableAndId
+    // DatabaseWriter.get() calls this.writableStorage.getDocumentByTableAndId(tableName, id)
+    expect(db.get('users_abc123' as Id<'users'>)).resolves.toEqual(expect.objectContaining({
+      _id: 'users_abc123',
+      name: 'Alice',
+    }))
+  })
+
+  it('should be used by DatabaseWriter.patch() to find existing document', async () => {
+    storage.saveDocument('users', 'users_patch123', {
+      _id: 'users_patch123',
+      _creationTime: Date.now(),
+      name: 'Bob',
+      email: 'bob@example.com',
+    })
+
+    const db = new DatabaseWriter(storage)
+    // patch() internally calls getDocumentByTableAndId to get the existing doc
+    // This will fail because the method doesn't exist on MockStorage
+    await expect(db.patch('users_patch123' as Id<'users'>, { email: 'new@example.com' }))
+      .resolves.toBeUndefined()
+  })
+
+  it('should be used by DatabaseWriter.replace() to preserve system fields', async () => {
+    storage.saveDocument('users', 'users_replace123', {
+      _id: 'users_replace123',
+      _creationTime: 1234567890,
+      name: 'Charlie',
+    })
+
+    const db = new DatabaseWriter(storage)
+    // replace() internally calls getDocumentByTableAndId to get system fields
+    // This will fail because the method doesn't exist on MockStorage
+    await expect(db.replace('users_replace123' as Id<'users'>, { name: 'Dave' }))
+      .resolves.toBeUndefined()
+  })
+})
 
 // ============================================================================
 // Insert Operation Tests

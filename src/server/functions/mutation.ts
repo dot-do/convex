@@ -4,63 +4,93 @@
  * Creates type-safe mutation handlers for Convex-compatible functions.
  * Mutations can read and write to the database, and run in transactions.
  *
- * Features:
- * - Type-safe arguments with validators
+ * This module provides the complete mutation implementation including:
+ * - Type-safe argument validation
  * - MutationCtx injection (db.insert, db.patch, db.replace, db.delete)
- * - Return type inference
- * - Configuration options (description, strictArgs, etc.)
- * - Argument validation and error handling
+ * - Return type validation
+ * - Configuration options (description, strictArgs)
+ * - Execution helpers for runtime validation
+ *
+ * @module
+ *
+ * @example
+ * ```typescript
+ * import { mutation, executeMutation } from "convex.do/server/functions/mutation";
+ * import { v } from "convex.do/values";
+ *
+ * const createUser = mutation({
+ *   args: { name: v.string(), email: v.string() },
+ *   returns: v.id("users"),
+ *   handler: async (ctx, args) => {
+ *     return await ctx.db.insert("users", args);
+ *   },
+ * });
+ *
+ * // Execute with validation
+ * const userId = await executeMutation(createUser, ctx, { name: "John", email: "john@example.com" });
+ * ```
  */
 
-import type { Validator, Infer, ArgsValidator } from '../../values'
+import type { ArgsValidator } from '../../values'
 import type { MutationCtx } from '../context'
+import {
+  type FunctionVisibility,
+  type InferredArgs,
+  type InferArgs,
+  type BaseFunctionConfig,
+  createRegisteredFunction,
+  validateArgs,
+  validateReturns,
+} from './shared'
 
 // ============================================================================
 // Types
 // ============================================================================
 
-/**
- * Helper type for inferring args from validator.
- * Supports both single Validator and Record<string, Validator> shapes.
- */
-export type InferArgs<T extends ArgsValidator> = T extends Validator<infer U>
-  ? U
-  : T extends Record<string, Validator>
-  ? { [K in keyof T]: Infer<T[K]> }
-  : never
-
-/**
- * Configuration for a mutation function.
- */
-export interface MutationConfig<
-  Args extends ArgsValidator | undefined,
-  Returns
-> {
-  /** Argument validators (optional) */
-  args?: Args
-  /** Return type validator (optional) */
-  returns?: Validator<Returns>
-  /** Description of the mutation (for documentation) */
-  description?: string
-  /** Whether to reject extra arguments not defined in args (default: false) */
-  strictArgs?: boolean
-  /** The mutation handler function */
-  handler: MutationHandler<Args, Returns>
-}
+// Re-export InferArgs for backwards compatibility
+export type { InferArgs }
 
 /**
  * The mutation handler function type.
+ *
+ * @typeParam Args - The argument validator type
+ * @typeParam Returns - The return value type
  */
 export type MutationHandler<
   Args extends ArgsValidator | undefined,
   Returns
 > = (
   ctx: MutationCtx,
-  args: Args extends ArgsValidator ? InferArgs<Args> : Record<string, never>
+  args: InferredArgs<Args>
 ) => Returns | Promise<Returns>
 
 /**
+ * Configuration for a mutation function.
+ *
+ * Extends BaseFunctionConfig with the mutation-specific handler type.
+ *
+ * @typeParam Args - The argument validator type
+ * @typeParam Returns - The return value type
+ */
+export interface MutationConfig<
+  Args extends ArgsValidator | undefined,
+  Returns
+> extends BaseFunctionConfig<Args, Returns> {
+  /**
+   * The mutation handler function.
+   *
+   * Receives MutationCtx with full read/write database access.
+   */
+  handler: MutationHandler<Args, Returns>
+}
+
+/**
  * A registered mutation function.
+ *
+ * Contains all metadata and configuration needed for registration and execution.
+ *
+ * @typeParam Args - The argument validator type
+ * @typeParam Returns - The return value type
  */
 export interface RegisteredMutation<
   Args extends ArgsValidator | undefined,
@@ -69,11 +99,11 @@ export interface RegisteredMutation<
   /** Internal marker for mutation type */
   readonly _type: 'mutation'
   /** Internal marker for args type */
-  readonly _args: Args extends ArgsValidator ? InferArgs<Args> : Record<string, never>
+  readonly _args: InferredArgs<Args>
   /** Internal marker for return type */
   readonly _returns: Returns
   /** Visibility: public or internal */
-  readonly _visibility: 'public' | 'internal'
+  readonly _visibility: FunctionVisibility
   /** The configuration */
   readonly _config: MutationConfig<Args, Returns>
 }
@@ -84,98 +114,44 @@ export interface RegisteredMutation<
 
 /**
  * Extract the args type from a registered mutation.
+ *
+ * @typeParam M - The registered mutation type
  */
 export type MutationArgs<M extends RegisteredMutation<ArgsValidator | undefined, unknown>> =
   M['_args']
 
 /**
  * Extract the return type from a registered mutation.
+ *
+ * @typeParam M - The registered mutation type
  */
 export type MutationReturns<M extends RegisteredMutation<ArgsValidator | undefined, unknown>> =
   M['_returns']
 
 // ============================================================================
-// Argument Validation
+// Argument Validation (Deprecated - Use shared.validateArgs)
 // ============================================================================
 
 /**
  * Validate mutation arguments against the defined validators.
+ *
+ * This is a compatibility export that delegates to the shared validateArgs function.
+ * Prefer using validateArgs from './shared' for new code.
  *
  * @param argsValidator - The argument validators or undefined
  * @param input - The raw input to validate
  * @param strict - Whether to reject extra fields (default: false)
  * @returns The validated and parsed arguments
  * @throws Error if validation fails
+ *
+ * @deprecated Use validateArgs from './shared' instead
  */
 export function validateMutationArgs<Args extends ArgsValidator | undefined>(
   argsValidator: Args,
   input: unknown,
   strict: boolean = false
-): Args extends ArgsValidator ? InferArgs<Args> : Record<string, never> {
-  // If no args validator, return empty object
-  if (argsValidator === undefined) {
-    return {} as Args extends ArgsValidator ? InferArgs<Args> : Record<string, never>
-  }
-
-  // Handle empty validator object
-  if (typeof argsValidator === 'object' && Object.keys(argsValidator).length === 0) {
-    return {} as Args extends ArgsValidator ? InferArgs<Args> : Record<string, never>
-  }
-
-  // Ensure input is an object
-  if (input === null || typeof input !== 'object' || Array.isArray(input)) {
-    throw new Error('Arguments must be an object')
-  }
-
-  const inputObj = input as Record<string, unknown>
-  const result: Record<string, unknown> = {}
-
-  // If argsValidator is a Validator (v.object()), use it directly
-  if ('parse' in argsValidator && typeof argsValidator.parse === 'function') {
-    const validator = argsValidator as Validator
-    return validator.parse(input) as Args extends ArgsValidator ? InferArgs<Args> : Record<string, never>
-  }
-
-  // argsValidator is a Record<string, Validator>
-  const validators = argsValidator as Record<string, Validator>
-  const validatorKeys = new Set(Object.keys(validators))
-
-  // Check for extra fields in strict mode
-  if (strict) {
-    for (const key of Object.keys(inputObj)) {
-      if (!validatorKeys.has(key)) {
-        throw new Error(`Unexpected field "${key}" in arguments`)
-      }
-    }
-  }
-
-  // Validate each defined field
-  for (const [key, validator] of Object.entries(validators)) {
-    const value = inputObj[key]
-
-    // Check for missing required fields
-    if (value === undefined) {
-      if (!validator.isOptional) {
-        throw new Error(`Missing required field "${key}"`)
-      }
-      // Optional field that's undefined - skip it
-      continue
-    }
-
-    // Parse and validate the value
-    try {
-      result[key] = validator.parse(value)
-    } catch (error) {
-      // Re-throw with field context if not already included
-      const message = error instanceof Error ? error.message : String(error)
-      if (message.includes(`"${key}"`) || message.includes(`at ${key}`)) {
-        throw error
-      }
-      throw new Error(`Invalid value for field "${key}": ${message}`)
-    }
-  }
-
-  return result as Args extends ArgsValidator ? InferArgs<Args> : Record<string, never>
+): InferredArgs<Args> {
+  return validateArgs(argsValidator, input, strict)
 }
 
 // ============================================================================
@@ -187,6 +163,12 @@ export function validateMutationArgs<Args extends ArgsValidator | undefined>(
  *
  * Mutations can read and write to the database. They run in a transaction
  * and are automatically retried on conflicts.
+ *
+ * @typeParam Args - The argument validator type (inferred from config.args)
+ * @typeParam Returns - The return value type (inferred from handler)
+ *
+ * @param config - The mutation configuration
+ * @returns A registered mutation function
  *
  * @example
  * ```typescript
@@ -217,19 +199,19 @@ export function mutation<
 >(
   config: MutationConfig<Args, Returns>
 ): RegisteredMutation<Args, Returns> {
-  return {
-    _type: 'mutation',
-    _args: undefined as unknown as Args extends ArgsValidator ? InferArgs<Args> : Record<string, never>,
-    _returns: undefined as unknown as Returns,
-    _visibility: 'public',
-    _config: config,
-  }
+  return createRegisteredFunction('mutation', 'public', config) as unknown as RegisteredMutation<Args, Returns>
 }
 
 /**
  * Create an internal mutation function.
  *
  * Internal mutations can only be called from other functions, not from clients.
+ *
+ * @typeParam Args - The argument validator type (inferred from config.args)
+ * @typeParam Returns - The return value type (inferred from handler)
+ *
+ * @param config - The mutation configuration
+ * @returns A registered internal mutation function
  *
  * @example
  * ```typescript
@@ -254,13 +236,7 @@ export function internalMutation<
 >(
   config: MutationConfig<Args, Returns>
 ): RegisteredMutation<Args, Returns> {
-  return {
-    _type: 'mutation',
-    _args: undefined as unknown as Args extends ArgsValidator ? InferArgs<Args> : Record<string, never>,
-    _returns: undefined as unknown as Returns,
-    _visibility: 'internal',
-    _config: config,
-  }
+  return createRegisteredFunction('mutation', 'internal', config) as unknown as RegisteredMutation<Args, Returns>
 }
 
 // ============================================================================
@@ -273,8 +249,25 @@ export function internalMutation<
  * This extracts the handler from the mutation config and returns it
  * ready to be executed with a context and arguments.
  *
+ * Note: This does NOT perform argument validation. Use executeMutation
+ * for full validation support.
+ *
+ * @typeParam Args - The argument validator type
+ * @typeParam Returns - The return value type
+ *
  * @param mutation - The registered mutation
  * @returns A function that takes ctx and args and returns the result
+ *
+ * @example
+ * ```typescript
+ * const myMutation = mutation({
+ *   args: { name: v.string() },
+ *   handler: async (ctx, args) => args.name,
+ * });
+ *
+ * const handler = createMutationHandler(myMutation);
+ * const result = await handler(ctx, { name: "test" });
+ * ```
  */
 export function createMutationHandler<
   Args extends ArgsValidator | undefined,
@@ -283,7 +276,7 @@ export function createMutationHandler<
   mutation: RegisteredMutation<Args, Returns>
 ): (
   ctx: MutationCtx,
-  args: Args extends ArgsValidator ? InferArgs<Args> : Record<string, never>
+  args: InferredArgs<Args>
 ) => Promise<Returns> {
   return async (ctx, args) => {
     return await mutation._config.handler(ctx, args)
@@ -294,14 +287,37 @@ export function createMutationHandler<
  * Execute a mutation with full validation.
  *
  * This validates the arguments against the mutation's validators,
- * then executes the handler with the validated arguments.
+ * executes the handler with the validated arguments, and optionally
+ * validates the return value.
+ *
+ * @typeParam Args - The argument validator type
+ * @typeParam Returns - The return value type
  *
  * @param mutation - The registered mutation to execute
  * @param ctx - The mutation context
  * @param rawArgs - The raw arguments to validate and pass
  * @returns The result of the mutation handler
  * @throws Error if argument validation fails
+ * @throws Error if return value validation fails
  * @throws Error if the handler throws
+ *
+ * @example
+ * ```typescript
+ * const createUser = mutation({
+ *   args: { name: v.string(), email: v.string() },
+ *   returns: v.id("users"),
+ *   handler: async (ctx, args) => ctx.db.insert("users", args),
+ * });
+ *
+ * // Execute with validation
+ * const userId = await executeMutation(createUser, ctx, {
+ *   name: "John",
+ *   email: "john@example.com",
+ * });
+ *
+ * // Throws if validation fails
+ * await executeMutation(createUser, ctx, { name: 123 }); // Error: Expected string
+ * ```
  */
 export async function executeMutation<
   Args extends ArgsValidator | undefined,
@@ -312,24 +328,17 @@ export async function executeMutation<
   rawArgs: unknown
 ): Promise<Returns> {
   // Validate arguments
-  const validatedArgs = validateMutationArgs(
+  const validatedArgs = validateArgs(
     mutation._config.args,
     rawArgs,
     mutation._config.strictArgs ?? false
   )
 
   // Execute the handler
-  const result = await mutation._config.handler(ctx, validatedArgs)
+  const result = await mutation._config.handler(ctx, validatedArgs as InferredArgs<Args>)
 
   // Optionally validate return value
-  if (mutation._config.returns) {
-    try {
-      mutation._config.returns.parse(result)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      throw new Error(`Return value validation failed: ${message}`)
-    }
-  }
+  validateReturns(mutation._config.returns, result)
 
   return result
 }

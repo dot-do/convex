@@ -92,23 +92,25 @@ export function usePaginatedQuery<T>(
   const [cursor, setCursor] = useState<string | null>(null)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
 
-  // Track args for comparison
+  // Track args for comparison to avoid re-subscribing on equivalent args
   const argsRef = useRef<string>('')
   const argsJson = JSON.stringify(args)
 
-  // Reset when args change
+  // Subscribe to first page and handle arg changes
   useEffect(() => {
-    if (argsRef.current !== argsJson) {
-      argsRef.current = argsJson
+    // Check if args changed - if so, reset state
+    const argsChanged = argsRef.current !== '' && argsRef.current !== argsJson
+    if (argsChanged) {
       setResults([])
       setCursor(null)
       setStatus('LoadingFirstPage')
     }
-  }, [argsJson])
+    argsRef.current = argsJson
 
-  // Load first page
-  useEffect(() => {
-    if (status !== 'LoadingFirstPage') return
+    // Only subscribe when loading first page
+    if (status !== 'LoadingFirstPage' && !argsChanged) {
+      return
+    }
 
     const paginationOpts: PaginationOptions = {
       numItems: options.numItems,
@@ -128,7 +130,8 @@ export function usePaginatedQuery<T>(
     return () => {
       unsubscribe()
     }
-  }, [client, query, args, options.numItems, status])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client, query, argsJson, options.numItems, status])
 
   // Load more function
   const loadMore = useCallback(

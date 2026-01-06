@@ -1,14 +1,28 @@
 /**
  * Schema Definition System
  *
- * Provides `defineSchema` and `defineTable` for defining the database schema.
- * This module enables type-safe schema definitions with support for:
- * - Document field validation using validators
- * - Database indexes for query optimization
- * - Full-text search indexes
- * - Vector indexes for similarity search
+ * This module provides the core schema definition API for Convex applications,
+ * enabling type-safe database schemas with compile-time validation and runtime checks.
  *
- * @example
+ * @module server/schema
+ *
+ * @description
+ * The schema system consists of two main functions:
+ * - `defineTable()` - Creates a table definition with document schema and fluent index API
+ * - `defineSchema()` - Combines table definitions into an immutable application schema
+ *
+ * Key features:
+ * - **Type Safety**: Full TypeScript inference for document types
+ * - **Fluent API**: Chainable methods for defining indexes
+ * - **Validation**: Runtime document validation against schema
+ * - **Immutability**: Schemas are frozen after creation to prevent accidental mutation
+ *
+ * Supported index types:
+ * - **Database indexes**: Standard B-tree indexes for query optimization
+ * - **Search indexes**: Full-text search with relevance ranking
+ * - **Vector indexes**: Approximate nearest neighbor (ANN) search for embeddings
+ *
+ * @example Basic usage
  * ```typescript
  * import { defineSchema, defineTable } from "convex.do/server";
  * import { v } from "convex.do/values";
@@ -21,7 +35,58 @@
  * });
  * ```
  *
- * @module server/schema
+ * @example Complex schema with multiple index types
+ * ```typescript
+ * import { defineSchema, defineTable } from "convex.do/server";
+ * import { v } from "convex.do/values";
+ *
+ * export default defineSchema({
+ *   documents: defineTable({
+ *     title: v.string(),
+ *     content: v.string(),
+ *     embedding: v.array(v.float64()),
+ *     authorId: v.id("users"),
+ *     category: v.string(),
+ *   })
+ *     .index("by_author", ["authorId"])
+ *     .index("by_category_author", ["category", "authorId"])
+ *     .searchIndex("search_content", {
+ *       searchField: "content",
+ *       filterFields: ["category"],
+ *     })
+ *     .vectorIndex("by_embedding", {
+ *       vectorField: "embedding",
+ *       dimensions: 1536,
+ *       filterFields: ["category"],
+ *     }),
+ * });
+ * ```
+ *
+ * @example Type inference with DataModel
+ * ```typescript
+ * import { defineSchema, defineTable, DataModel, Doc } from "convex.do/server";
+ * import { v } from "convex.do/values";
+ *
+ * const schema = defineSchema({
+ *   users: defineTable({
+ *     name: v.string(),
+ *     email: v.string(),
+ *   }),
+ * });
+ *
+ * // Infer the data model type
+ * type Model = DataModel<typeof schema>;
+ * // Model.users = { name: string; email: string }
+ *
+ * // Get document type with system fields
+ * type UserDoc = Doc<typeof schema, "users">;
+ * // UserDoc = { _id: string; _creationTime: number; name: string; email: string }
+ * ```
+ *
+ * @see {@link defineTable} - Create a table definition
+ * @see {@link defineSchema} - Create an application schema
+ * @see {@link TableBuilder} - Table definition builder class
+ * @see {@link DataModel} - Type utility for schema inference
  */
 
 import type { Validator, Infer } from '../values'
@@ -451,79 +516,215 @@ function validateSchemaOptions(options: SchemaOptions): void {
 /**
  * Document shape definition using validators.
  * Maps field names to their corresponding validators.
+ *
+ * @remarks
+ * This type constrains the document definition to only accept valid field names
+ * (non-empty strings) mapped to Validator instances. System fields (_id, _creationTime)
+ * are automatically added by Convex and should not be included in the definition.
+ *
+ * @example
+ * ```typescript
+ * const userDoc: DocumentDefinition = {
+ *   name: v.string(),
+ *   email: v.string(),
+ *   age: v.optional(v.number()),
+ * };
+ * ```
  */
 export type DocumentDefinition = Record<string, Validator>
 
 /**
  * Configuration for a database index.
+ *
+ * @remarks
+ * Database indexes improve query performance for reads that filter or sort by
+ * the indexed fields. Compound indexes (multiple fields) should list fields
+ * in order of selectivity, with the most selective field first.
+ *
+ * @example
+ * ```typescript
+ * const config: IndexConfig = {
+ *   fields: ['authorId', 'createdAt'],
+ *   unique: false,
+ * };
+ * ```
  */
 export interface IndexConfig {
-  /** Fields to index, in order. Compound indexes list multiple fields. */
-  fields: IndexFieldSpec[]
-  /** Whether this index enforces uniqueness across documents */
-  unique?: boolean
-  /** Whether this is a sparse index (only indexes documents where the field exists) */
-  sparse?: boolean
+  /**
+   * Fields to index, in order.
+   * For compound indexes, list fields in order of selectivity.
+   */
+  readonly fields: readonly IndexFieldSpec[]
+  /**
+   * Whether this index enforces uniqueness across documents.
+   * @default false
+   */
+  readonly unique?: boolean
+  /**
+   * Whether this is a sparse index (only indexes documents where the field exists).
+   * Sparse indexes skip documents where any indexed field is undefined.
+   * @default false
+   */
+  readonly sparse?: boolean
 }
 
 /**
  * Options for configuring index behavior.
+ *
+ * @example
+ * ```typescript
+ * table.index("by_email", ["email"], { unique: true });
+ * ```
  */
 export interface IndexOptions {
-  /** Whether this index enforces uniqueness across documents */
-  unique?: boolean
-  /** Whether this is a sparse index (only indexes documents where the field exists) */
-  sparse?: boolean
+  /**
+   * Whether this index enforces uniqueness across documents.
+   * When true, attempts to insert/update documents with duplicate values will fail.
+   * @default false
+   */
+  readonly unique?: boolean
+  /**
+   * Whether this is a sparse index.
+   * Sparse indexes only include documents where all indexed fields have values.
+   * @default false
+   */
+  readonly sparse?: boolean
 }
 
 /**
  * Configuration for a full-text search index.
+ *
+ * @remarks
+ * Search indexes enable efficient text searching with relevance ranking.
+ * The search field must be a string type field. Filter fields allow
+ * narrowing search results by additional criteria.
+ *
+ * @example
+ * ```typescript
+ * const config: SearchIndexConfig = {
+ *   searchField: 'content',
+ *   filterFields: ['category', 'status'],
+ * };
+ * ```
  */
 export interface SearchIndexConfig {
-  /** The field to perform full-text search on */
-  searchField: string
-  /** Additional fields that can be used to filter search results */
-  filterFields?: string[]
+  /**
+   * The field to perform full-text search on.
+   * Must reference a string-type field in the document schema.
+   */
+  readonly searchField: string
+  /**
+   * Additional fields that can be used to filter search results.
+   * These fields can be used to narrow down results before or after search.
+   */
+  readonly filterFields?: readonly string[]
 }
 
 /**
  * Configuration for a vector similarity search index.
+ *
+ * @remarks
+ * Vector indexes enable efficient approximate nearest neighbor (ANN) searches
+ * for applications like semantic search, recommendations, and similarity matching.
+ * The vector field must be an array of float64 values with consistent dimensions.
+ *
+ * @example
+ * ```typescript
+ * const config: VectorIndexConfig = {
+ *   vectorField: 'embedding',
+ *   dimensions: 1536, // OpenAI ada-002
+ *   filterFields: ['category'],
+ * };
+ * ```
  */
 export interface VectorIndexConfig {
-  /** The field containing the vector embedding */
-  vectorField: string
-  /** Number of dimensions in the vector (must match your embedding model) */
-  dimensions: number
-  /** Additional fields that can be used to filter search results */
-  filterFields?: string[]
+  /**
+   * The field containing the vector embedding.
+   * Must reference an array-type field (typically v.array(v.float64())).
+   */
+  readonly vectorField: string
+  /**
+   * Number of dimensions in the vector.
+   * Must match your embedding model's output dimensions (e.g., 1536 for OpenAI ada-002).
+   */
+  readonly dimensions: number
+  /**
+   * Additional fields that can be used to filter search results.
+   * Filtering is applied before vector similarity search for efficiency.
+   */
+  readonly filterFields?: readonly string[]
 }
 
 /**
  * A complete table definition with document schema and indexes.
  *
- * @typeParam Doc - The document definition type
+ * @remarks
+ * This interface represents the complete configuration for a database table,
+ * including the document schema and all index definitions. It is implemented
+ * by {@link TableBuilder} and should generally be created using {@link defineTable}.
+ *
+ * @typeParam Doc - The document definition type mapping field names to validators
+ *
+ * @example
+ * ```typescript
+ * // TableDefinition is the return type of defineTable
+ * const userTable: TableDefinition = defineTable({
+ *   name: v.string(),
+ *   email: v.string(),
+ * }).index("by_email", ["email"]);
+ * ```
  */
 export interface TableDefinition<Doc extends DocumentDefinition = DocumentDefinition> {
-  /** Document field validators defining the schema */
+  /**
+   * Document field validators defining the schema.
+   * Maps field names to their corresponding validators.
+   */
   readonly document: Doc
-  /** Database indexes defined on this table */
-  readonly indexes: Record<string, IndexConfig>
-  /** Full-text search indexes defined on this table */
-  readonly searchIndexes: Record<string, SearchIndexConfig>
-  /** Vector similarity search indexes defined on this table */
-  readonly vectorIndexes: Record<string, VectorIndexConfig>
+  /**
+   * Database indexes defined on this table.
+   * Maps index names to their configurations.
+   */
+  readonly indexes: Readonly<Record<string, IndexConfig>>
+  /**
+   * Full-text search indexes defined on this table.
+   * Maps search index names to their configurations.
+   */
+  readonly searchIndexes: Readonly<Record<string, SearchIndexConfig>>
+  /**
+   * Vector similarity search indexes defined on this table.
+   * Maps vector index names to their configurations.
+   */
+  readonly vectorIndexes: Readonly<Record<string, VectorIndexConfig>>
 }
 
 /**
  * Infers the TypeScript document type from a table definition.
  *
- * @typeParam T - The table definition type
+ * @remarks
+ * This utility type extracts the TypeScript type that documents in a table
+ * must conform to, based on the validator definitions. It handles optional
+ * fields, nested objects, arrays, and unions correctly.
  *
- * @example
+ * @typeParam T - The table definition type (result of defineTable)
+ *
+ * @example Basic inference
  * ```typescript
- * const userTable = defineTable({ name: v.string(), age: v.number() })
- * type User = InferDocument<typeof userTable>
+ * const userTable = defineTable({
+ *   name: v.string(),
+ *   age: v.number(),
+ * });
+ * type User = InferDocument<typeof userTable>;
  * // User = { name: string; age: number }
+ * ```
+ *
+ * @example With optional fields
+ * ```typescript
+ * const profileTable = defineTable({
+ *   bio: v.optional(v.string()),
+ *   avatar: v.optional(v.string()),
+ * });
+ * type Profile = InferDocument<typeof profileTable>;
+ * // Profile = { bio?: string; avatar?: string }
  * ```
  */
 export type InferDocument<T extends TableDefinition> = {
@@ -702,56 +903,141 @@ function cloneVectorIndexConfig(config: VectorIndexConfig): VectorIndexConfig {
  * Used for the table config method which can be called and also accessed as properties.
  *
  * @typeParam T - The return type when called as a function
+ * @internal
  */
 type ConfigurableFunction<T> = ((cfg: Record<string, unknown>) => T) & Record<string, unknown>
 
 /**
+ * Internal type for mutable index storage during table building.
+ * Converted to readonly when accessed through the interface.
+ * @internal
+ */
+type MutableIndexConfig = {
+  fields: IndexFieldSpec[]
+  unique?: boolean
+  sparse?: boolean
+}
+
+/**
  * Builder class for creating table definitions with a fluent API.
  *
- * Provides methods for defining indexes, search indexes, and vector indexes
- * on a table, all with method chaining support.
+ * @remarks
+ * TableBuilder provides a fluent interface for defining database tables including:
+ * - Document schema with field validators
+ * - Database indexes for query optimization
+ * - Full-text search indexes for text search
+ * - Vector indexes for similarity search
  *
- * @typeParam Doc - The document definition type for this table
+ * All index definition methods return `this` for method chaining. The builder
+ * validates all inputs at definition time to catch errors early.
  *
- * @example
+ * @typeParam Doc - The document definition type mapping field names to validators.
+ *   This type parameter is inferred from the document object passed to the constructor.
+ *
+ * @example Basic table with single index
  * ```typescript
  * const usersTable = defineTable({
  *   name: v.string(),
  *   email: v.string(),
- * })
- *   .index("by_email", ["email"])
- *   .searchIndex("search_name", { searchField: "name" })
+ * }).index("by_email", ["email"]);
  * ```
+ *
+ * @example Table with multiple index types
+ * ```typescript
+ * const documentsTable = defineTable({
+ *   title: v.string(),
+ *   content: v.string(),
+ *   embedding: v.array(v.float64()),
+ *   category: v.string(),
+ * })
+ *   .index("by_category", ["category"])
+ *   .searchIndex("search_content", {
+ *     searchField: "content",
+ *     filterFields: ["category"],
+ *   })
+ *   .vectorIndex("by_embedding", {
+ *     vectorField: "embedding",
+ *     dimensions: 1536,
+ *   });
+ * ```
+ *
+ * @example Compound index with options
+ * ```typescript
+ * const ordersTable = defineTable({
+ *   userId: v.id("users"),
+ *   status: v.string(),
+ *   createdAt: v.number(),
+ * })
+ *   .index("by_user_status", ["userId", "status"])
+ *   .index("by_user_created", ["userId", "createdAt"], { sparse: true });
+ * ```
+ *
+ * @see {@link defineTable} - Factory function to create TableBuilder instances
+ * @see {@link TableDefinition} - Interface implemented by TableBuilder
  */
 export class TableBuilder<Doc extends DocumentDefinition> implements TableDefinition<Doc> {
-  /** The document schema for this table */
+  /**
+   * The document schema for this table.
+   * Contains field validators that define the structure of documents.
+   * @readonly
+   */
   readonly document: Doc
 
-  /** Database indexes defined on this table */
+  /**
+   * Database indexes defined on this table.
+   * Maps index names to their configurations.
+   * @readonly after schema creation
+   */
   readonly indexes: Record<string, IndexConfig> = {}
 
-  /** Full-text search indexes defined on this table */
+  /**
+   * Full-text search indexes defined on this table.
+   * Maps search index names to their configurations.
+   * @readonly after schema creation
+   */
   readonly searchIndexes: Record<string, SearchIndexConfig> = {}
 
-  /** Vector similarity search indexes defined on this table */
+  /**
+   * Vector similarity search indexes defined on this table.
+   * Maps vector index names to their configurations.
+   * @readonly after schema creation
+   */
   readonly vectorIndexes: Record<string, VectorIndexConfig> = {}
 
-  /** Optional metadata for the table (e.g., description) */
+  /**
+   * Optional metadata for the table.
+   * Can include description and other custom properties.
+   */
   metadata?: { description?: string }
 
-  /** Internal storage for table configuration */
+  /**
+   * Internal storage for table configuration.
+   * @internal
+   */
   private _tableConfig?: Record<string, unknown>
 
   /**
    * Configuration function that can also store and expose config properties.
-   * Allows both `table.config({ ttl: 100 })` and `table.config.ttl` access patterns.
+   *
+   * @remarks
+   * This hybrid function/object allows both calling patterns:
+   * - `table.config({ ttl: 100 })` - Set configuration
+   * - `table.config.ttl` - Access configuration value
    */
   config!: ConfigurableFunction<this>
 
   /**
    * Creates a new TableBuilder with the given document schema.
    *
-   * @param document - The document field validators
+   * @param document - Object mapping field names to validators
+   *
+   * @example
+   * ```typescript
+   * const builder = new TableBuilder({
+   *   name: v.string(),
+   *   email: v.string(),
+   * });
+   * ```
    */
   constructor(document: Doc) {
     this.document = document
@@ -761,6 +1047,7 @@ export class TableBuilder<Doc extends DocumentDefinition> implements TableDefini
   /**
    * Initializes the config method/property hybrid.
    * This allows config to be called as a function and accessed as properties.
+   * @internal
    */
   private initializeConfig(): void {
     const self = this
@@ -775,33 +1062,63 @@ export class TableBuilder<Doc extends DocumentDefinition> implements TableDefini
   /**
    * Defines a database index on this table.
    *
+   * @remarks
    * Indexes improve query performance for reads that filter or sort by the indexed fields.
-   * Compound indexes (multiple fields) should list fields in order of selectivity.
+   * For compound indexes (multiple fields), list fields in order of selectivity -
+   * the most selective field (fewest duplicates) should come first.
    *
-   * @param name - Unique name for the index
-   * @param fields - Array of field names to index, in order
-   * @param options - Optional index configuration (unique, sparse)
+   * Index naming convention: Use descriptive names like `by_fieldName` or `by_field1_field2`
+   * for compound indexes. Names must start with a letter and contain only alphanumeric
+   * characters and underscores.
+   *
+   * @param name - Unique name for the index (e.g., "by_email", "by_author_date")
+   * @param fields - Array of field names to index, in order of selectivity
+   * @param options - Optional index configuration
    * @returns This builder for method chaining
-   * @throws {Error} If the index name is invalid, already exists, or fields are invalid
    *
-   * @example
+   * @throws {Error} Index name is empty, starts with underscore/number, or contains invalid characters
+   * @throws {Error} Index name is reserved ("by_creation_time", "by_id")
+   * @throws {Error} Index with this name already exists on this table
+   * @throws {Error} Fields array is empty
+   * @throws {Error} Field does not exist in document schema
+   * @throws {Error} Duplicate field in index definition
+   *
+   * @example Single field index
    * ```typescript
-   * defineTable({ email: v.string(), createdAt: v.number() })
+   * defineTable({ email: v.string() })
    *   .index("by_email", ["email"])
-   *   .index("by_created", ["createdAt"], { unique: false })
+   * ```
+   *
+   * @example Compound index
+   * ```typescript
+   * defineTable({
+   *   authorId: v.id("users"),
+   *   createdAt: v.number(),
+   * }).index("by_author_date", ["authorId", "createdAt"])
+   * ```
+   *
+   * @example Index with options
+   * ```typescript
+   * defineTable({ email: v.string() })
+   *   .index("by_email", ["email"], { unique: true })
    * ```
    */
   index(name: string, fields: IndexFieldSpec[], options?: IndexOptions): this {
+    // Validate index name
     validateIndexName(name)
 
+    // Check for duplicate index name
     if (name in this.indexes) {
       throw new Error(`Duplicate index: "${name}" already exists on this table`)
     }
 
+    // Validate all fields exist and are not duplicated
     validateIndexFields(fields, this.document)
 
-    const indexConfig: IndexConfig = { fields }
+    // Build index config - only allocate options properties if needed
+    const indexConfig: MutableIndexConfig = { fields: [...fields] }
 
+    // Only add optional properties if they have values (minimize object size)
     if (options?.unique !== undefined) {
       indexConfig.unique = options.unique
     }
@@ -809,38 +1126,67 @@ export class TableBuilder<Doc extends DocumentDefinition> implements TableDefini
       indexConfig.sparse = options.sparse
     }
 
-    this.indexes[name] = indexConfig
+    // Store the config (cast is safe because MutableIndexConfig is compatible with IndexConfig)
+    this.indexes[name] = indexConfig as IndexConfig
     return this
   }
 
   /**
    * Defines a full-text search index on this table.
    *
+   * @remarks
    * Search indexes enable efficient text searching with relevance ranking.
-   * The search field must be a string type, and filter fields allow narrowing results.
+   * The search field must be a string type field. Filter fields allow narrowing
+   * results by additional criteria before or after the search.
    *
-   * @param name - Unique name for the search index
-   * @param config - Search index configuration
+   * Search index naming convention: Use descriptive names like `search_fieldName`
+   * that indicate what field is being searched.
+   *
+   * @param name - Unique name for the search index (e.g., "search_content")
+   * @param config - Search index configuration specifying the search and filter fields
    * @returns This builder for method chaining
-   * @throws {Error} If the name is invalid, already exists, or fields are invalid
    *
-   * @example
+   * @throws {Error} Name is empty or contains invalid characters
+   * @throws {Error} Search index with this name already exists
+   * @throws {Error} searchField is missing or empty
+   * @throws {Error} searchField references a non-string type
+   * @throws {Error} searchField is duplicated in filterFields
+   * @throws {Error} Filter field does not exist in document schema
+   *
+   * @example Basic search index
+   * ```typescript
+   * defineTable({
+   *   title: v.string(),
+   *   body: v.string(),
+   * }).searchIndex("search_body", {
+   *   searchField: "body",
+   * })
+   * ```
+   *
+   * @example Search index with filters
    * ```typescript
    * defineTable({
    *   title: v.string(),
    *   body: v.string(),
    *   category: v.string(),
+   *   status: v.string(),
    * }).searchIndex("search_body", {
    *   searchField: "body",
-   *   filterFields: ["category"],
+   *   filterFields: ["category", "status"],
    * })
    * ```
    */
   searchIndex(name: string, config: SearchIndexConfig): this {
+    // Validate name and check for duplicates
     this.validateSearchIndexName(name)
+
+    // Validate configuration and field references
     this.validateSearchIndexConfig(name, config)
 
-    this.searchIndexes[name] = config
+    // Store the config (clone filterFields to prevent external mutation)
+    this.searchIndexes[name] = config.filterFields
+      ? { searchField: config.searchField, filterFields: [...config.filterFields] }
+      : { searchField: config.searchField }
     return this
   }
 
@@ -906,32 +1252,69 @@ export class TableBuilder<Doc extends DocumentDefinition> implements TableDefini
   /**
    * Defines a vector similarity search index on this table.
    *
+   * @remarks
    * Vector indexes enable efficient approximate nearest neighbor (ANN) searches
    * for applications like semantic search, recommendations, and similarity matching.
+   * The vector field must be an array type (typically `v.array(v.float64())`).
    *
-   * @param name - Unique name for the vector index
+   * The `dimensions` parameter must match your embedding model's output:
+   * - OpenAI text-embedding-ada-002: 1536
+   * - OpenAI text-embedding-3-small: 1536
+   * - OpenAI text-embedding-3-large: 3072
+   * - Cohere embed-english-v3.0: 1024
+   *
+   * @param name - Unique name for the vector index (e.g., "by_embedding")
    * @param config - Vector index configuration including dimensions
    * @returns This builder for method chaining
-   * @throws {Error} If the name is invalid, already exists, or fields are invalid
    *
-   * @example
+   * @throws {Error} Name is empty
+   * @throws {Error} Vector index with this name already exists
+   * @throws {Error} vectorField does not exist in document schema
+   * @throws {Error} vectorField is not an array type
+   * @throws {Error} dimensions is not a positive number
+   * @throws {Error} Filter field does not exist in document schema
+   *
+   * @example Basic vector index
+   * ```typescript
+   * defineTable({
+   *   text: v.string(),
+   *   embedding: v.array(v.float64()),
+   * }).vectorIndex("by_embedding", {
+   *   vectorField: "embedding",
+   *   dimensions: 1536,
+   * })
+   * ```
+   *
+   * @example Vector index with filters
    * ```typescript
    * defineTable({
    *   text: v.string(),
    *   embedding: v.array(v.float64()),
    *   category: v.string(),
+   *   language: v.string(),
    * }).vectorIndex("by_embedding", {
    *   vectorField: "embedding",
    *   dimensions: 1536,
-   *   filterFields: ["category"],
+   *   filterFields: ["category", "language"],
    * })
    * ```
    */
   vectorIndex(name: string, config: VectorIndexConfig): this {
+    // Validate name and check for duplicates
     this.validateVectorIndexName(name)
+
+    // Validate configuration and field references
     this.validateVectorIndexConfig(config)
 
-    this.vectorIndexes[name] = config
+    // Store the config (clone filterFields to prevent external mutation)
+    const storedConfig: VectorIndexConfig = {
+      vectorField: config.vectorField,
+      dimensions: config.dimensions,
+    }
+    if (config.filterFields) {
+      ;(storedConfig as { filterFields: string[] }).filterFields = [...config.filterFields]
+    }
+    this.vectorIndexes[name] = storedConfig
     return this
   }
 
@@ -985,26 +1368,52 @@ export class TableBuilder<Doc extends DocumentDefinition> implements TableDefini
   /**
    * Validates a document against this table's schema.
    *
-   * Checks that all required fields are present and all values match their validators.
+   * @remarks
+   * Performs runtime validation to check that:
+   * - All required fields are present
+   * - All field values match their validator types
+   * - No extra fields are present (if strict mode is enabled)
    *
-   * @param doc - The document to validate
-   * @returns Validation result with any errors found
+   * This is useful for validating user input before inserting into the database,
+   * or for testing document structures.
    *
-   * @example
+   * @param doc - The document to validate (unknown type for flexibility)
+   * @returns Validation result containing `valid` boolean and `errors` array
+   *
+   * @example Basic validation
    * ```typescript
-   * const result = usersTable.validate({ name: "John", age: "thirty" })
+   * const usersTable = defineTable({
+   *   name: v.string(),
+   *   age: v.number(),
+   * });
+   *
+   * const result = usersTable.validate({ name: "John", age: 30 });
+   * console.log(result.valid); // true
+   * ```
+   *
+   * @example Handling validation errors
+   * ```typescript
+   * const result = usersTable.validate({ name: "John", age: "thirty" });
    * if (!result.valid) {
-   *   console.error(result.errors)
+   *   for (const error of result.errors) {
+   *     if (typeof error === 'string') {
+   *       console.error(error);
+   *     } else {
+   *       console.error(`${error.path}: ${error.message}`);
+   *     }
+   *   }
    * }
    * ```
    */
   validate(doc: unknown): ValidationResult {
     const errors: Array<string | ValidationError> = []
 
+    // Early return for non-object values
     if (typeof doc !== 'object' || doc === null) {
       return { valid: false, errors: ['Document must be an object'] }
     }
 
+    // Validate all fields against schema
     validateNestedDocument({
       obj: doc as Record<string, unknown>,
       schema: this.document,
@@ -1018,10 +1427,25 @@ export class TableBuilder<Doc extends DocumentDefinition> implements TableDefini
   /**
    * Creates a new table definition with system fields (_id, _creationTime) included.
    *
-   * System fields are automatically added by Convex to every document.
-   * Use this when you need type definitions that include these fields.
+   * @remarks
+   * Convex automatically adds these system fields to every document:
+   * - `_id`: Unique document identifier (string format)
+   * - `_creationTime`: Timestamp when document was created (milliseconds since epoch)
+   *
+   * This method is useful when you need type definitions that include these fields,
+   * such as when working with query results.
    *
    * @returns A new TableBuilder with system fields added to the document schema
+   *
+   * @example
+   * ```typescript
+   * const usersTable = defineTable({ name: v.string() });
+   * const usersWithSystem = usersTable.withSystemFields();
+   *
+   * // Now includes _id and _creationTime in the type
+   * type UserDoc = InferDocument<typeof usersWithSystem>;
+   * // UserDoc = { name: string; _id: string; _creationTime: number }
+   * ```
    */
   withSystemFields(): TableBuilder<Doc & { _id: Validator; _creationTime: Validator }> {
     const systemFields = {
@@ -1035,6 +1459,7 @@ export class TableBuilder<Doc extends DocumentDefinition> implements TableDefini
     } as Doc & { _id: Validator; _creationTime: Validator }
 
     const builder = new TableBuilder(newDocument)
+    // Copy all indexes to the new builder
     Object.assign(builder.indexes, this.indexes)
     Object.assign(builder.searchIndexes, this.searchIndexes)
     Object.assign(builder.vectorIndexes, this.vectorIndexes)
@@ -1045,9 +1470,28 @@ export class TableBuilder<Doc extends DocumentDefinition> implements TableDefini
   /**
    * Converts the table definition to a JSON-serializable representation.
    *
-   * Useful for inspecting the schema or sending it over the wire.
+   * @remarks
+   * This method is useful for:
+   * - Inspecting the schema structure at runtime
+   * - Sending schema information over the wire
+   * - Generating documentation or debugging output
    *
-   * @returns JSON representation of the table definition
+   * @returns JSON representation with document fields as type objects and all indexes
+   *
+   * @example
+   * ```typescript
+   * const table = defineTable({
+   *   name: v.string(),
+   *   age: v.number(),
+   * }).index("by_name", ["name"]);
+   *
+   * console.log(JSON.stringify(table.toJSON(), null, 2));
+   * // {
+   * //   "document": { "name": { "type": "string" }, "age": { "type": "number" } },
+   * //   "indexes": { "by_name": { "fields": ["name"] } },
+   * //   ...
+   * // }
+   * ```
    */
   toJSON(): {
     document: Record<string, { type: string }>
@@ -1073,7 +1517,18 @@ export class TableBuilder<Doc extends DocumentDefinition> implements TableDefini
   /**
    * Exports the table definition in a format compatible with Convex.
    *
-   * @returns The raw table definition data
+   * @remarks
+   * Unlike `toJSON()`, this preserves the validator objects in the document
+   * definition, making it suitable for passing to Convex APIs.
+   *
+   * @returns The raw table definition data with original validators
+   *
+   * @example
+   * ```typescript
+   * const table = defineTable({ name: v.string() });
+   * const exported = table.export();
+   * // exported.document.name is the original validator
+   * ```
    */
   export(): {
     document: Doc
@@ -1090,11 +1545,33 @@ export class TableBuilder<Doc extends DocumentDefinition> implements TableDefini
   }
 
   /**
-   * Generates a code string representation of this table definition.
+   * Generates a TypeScript code string representation of this table definition.
    *
-   * Useful for code generation or displaying the schema in a human-readable format.
+   * @remarks
+   * This method is useful for:
+   * - Code generation tools
+   * - Schema documentation
+   * - Debugging and logging
+   *
+   * The generated code uses the `defineTable` and `v` API and can be
+   * copied directly into a schema file.
    *
    * @returns TypeScript code that would recreate this table definition
+   *
+   * @example
+   * ```typescript
+   * const table = defineTable({
+   *   name: v.string(),
+   *   email: v.string(),
+   * }).index("by_email", ["email"]);
+   *
+   * console.log(table.toCode());
+   * // defineTable({
+   * //   name: v.string(),
+   * //   email: v.string(),
+   * // })
+   * //   .index('by_email', ["email"])
+   * ```
    */
   toCode(): string {
     const lines: string[] = ['defineTable({']
@@ -1128,9 +1605,22 @@ export class TableBuilder<Doc extends DocumentDefinition> implements TableDefini
   /**
    * Creates a deep clone of this table definition.
    *
-   * The clone is independent and modifications to it won't affect the original.
+   * @remarks
+   * The clone is fully independent - modifications to it will not affect
+   * the original table definition. This is useful when you need to create
+   * variations of a table definition.
    *
    * @returns A new TableBuilder with the same configuration
+   *
+   * @example
+   * ```typescript
+   * const baseTable = defineTable({
+   *   name: v.string(),
+   * }).index("by_name", ["name"]);
+   *
+   * const clonedTable = baseTable.clone();
+   * clonedTable.index("another_index", ["name"]); // Doesn't affect baseTable
+   * ```
    */
   clone(): TableBuilder<Doc> {
     const clonedDoc = { ...this.document }
@@ -1165,13 +1655,28 @@ export class TableBuilder<Doc extends DocumentDefinition> implements TableDefini
   /**
    * Sets a description for this table.
    *
-   * Descriptions are stored in metadata and can be useful for documentation.
+   * @remarks
+   * Descriptions are stored in metadata and can be used for:
+   * - Documentation generation
+   * - Schema introspection
+   * - Admin UI display
    *
    * @param desc - The description text
    * @returns This builder for method chaining
+   *
+   * @example
+   * ```typescript
+   * const usersTable = defineTable({
+   *   name: v.string(),
+   *   email: v.string(),
+   * })
+   *   .description("Stores user account information")
+   *   .index("by_email", ["email"]);
+   * ```
    */
   description(desc: string): this {
-    this.metadata = this.metadata || {}
+    // Initialize metadata if needed, then set description
+    this.metadata = this.metadata ?? {}
     this.metadata.description = desc
     return this
   }
@@ -1184,31 +1689,59 @@ export class TableBuilder<Doc extends DocumentDefinition> implements TableDefini
 /**
  * Creates a table definition with the given document schema.
  *
- * This is the primary way to define a table's structure including field types,
- * indexes, and search capabilities. The returned builder supports method chaining
- * for adding indexes.
+ * @remarks
+ * This is the primary entry point for defining database tables. The function
+ * returns a {@link TableBuilder} that provides a fluent API for adding indexes,
+ * search indexes, and vector indexes.
  *
- * @typeParam Doc - The document definition type
+ * The document schema is defined using validators from the `v` namespace.
+ * Each field in the schema object maps to a validator that specifies the
+ * field's type and constraints.
+ *
+ * **Supported validator types:**
+ * - Primitives: `v.string()`, `v.number()`, `v.boolean()`, `v.null()`
+ * - Extended: `v.int64()`, `v.float64()`, `v.bytes()`
+ * - References: `v.id("tableName")`
+ * - Complex: `v.object({...})`, `v.array(...)`, `v.union(...)`
+ * - Modifiers: `v.optional(...)`, `v.literal(...)`
+ *
+ * @typeParam Doc - The document definition type (inferred from the document object)
  * @param document - Object mapping field names to validators
- * @returns A TableBuilder for further configuration
+ * @returns A TableBuilder for adding indexes and other configuration
  *
- * @example
+ * @example Simple table
  * ```typescript
- * // Simple table
  * const users = defineTable({
  *   name: v.string(),
  *   email: v.string(),
- * })
- *
- * // Table with indexes
- * const messages = defineTable({
- *   channel: v.id("channels"),
- *   body: v.string(),
- *   author: v.id("users"),
- * })
- *   .index("by_channel", ["channel"])
- *   .index("by_author", ["author", "channel"])
+ * });
  * ```
+ *
+ * @example Table with indexes
+ * ```typescript
+ * const messages = defineTable({
+ *   channelId: v.id("channels"),
+ *   body: v.string(),
+ *   authorId: v.id("users"),
+ * })
+ *   .index("by_channel", ["channelId"])
+ *   .index("by_author", ["authorId", "channelId"]);
+ * ```
+ *
+ * @example Complex nested schema
+ * ```typescript
+ * const profiles = defineTable({
+ *   userId: v.id("users"),
+ *   settings: v.object({
+ *     theme: v.union(v.literal("light"), v.literal("dark")),
+ *     notifications: v.boolean(),
+ *   }),
+ *   tags: v.array(v.string()),
+ * });
+ * ```
+ *
+ * @see {@link TableBuilder} - The builder class returned by this function
+ * @see {@link defineSchema} - Combines table definitions into a schema
  */
 export function defineTable<Doc extends DocumentDefinition>(
   document: Doc

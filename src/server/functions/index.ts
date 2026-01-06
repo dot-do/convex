@@ -1,10 +1,44 @@
 /**
- * Function types and utilities for convex.do
+ * Function Types and Utilities for Convex Functions
  *
- * This module re-exports registered function types and utilities.
+ * This module provides the core types, utilities, and factories for working
+ * with Convex functions (queries, mutations, and actions).
+ *
+ * Key Features:
+ * - Registered function types and type guards
+ * - Function registry for managing and executing functions
+ * - Function references for type-safe cross-function calls
+ * - API generation utilities
+ * - Shared utilities for argument validation
  *
  * @module
+ *
+ * @example
+ * ```typescript
+ * import {
+ *   isQuery,
+ *   isMutation,
+ *   FunctionRegistry,
+ *   makeFunctionReference,
+ * } from "convex.do/server/functions";
+ *
+ * // Check function type
+ * if (isQuery(fn)) {
+ *   console.log("This is a query");
+ * }
+ *
+ * // Create function reference
+ * const ref = makeFunctionReference<"query">("users:list");
+ *
+ * // Use registry
+ * const registry = new FunctionRegistry();
+ * registry.register("users:list", myQuery);
+ * ```
  */
+
+// ============================================================================
+// Registered Function Types and Utilities
+// ============================================================================
 
 export {
   // Types
@@ -12,8 +46,6 @@ export {
   type RegisteredMutation,
   type RegisteredAction,
   type AnyRegisteredFunction,
-  type FunctionType,
-  type FunctionVisibility,
   type FunctionArgs,
   type FunctionReturns,
   type GenericRegisteredFunction,
@@ -32,7 +64,30 @@ export {
   getFunctionHandler,
 } from './registered'
 
-// Export Function Registry
+// ============================================================================
+// Shared Utilities
+// ============================================================================
+
+export {
+  // Types - Canonical FunctionType and FunctionVisibility definitions
+  type FunctionType,
+  type FunctionVisibility,
+  type InferredArgs,
+  type BaseFunctionConfig,
+  type RegisteredFunctionBase,
+  type ExtractArgs,
+  type ExtractReturns,
+  // Utility functions
+  phantomType,
+  createRegisteredFunction,
+  validateArgs,
+  validateReturns,
+} from './shared'
+
+// ============================================================================
+// Function Registry
+// ============================================================================
+
 export {
   FunctionRegistry,
   FunctionRegistryError,
@@ -43,11 +98,12 @@ export {
   type HttpEndpointMatch,
   type RegistrationOptions,
   type HttpMethod,
-  type FunctionType as RegistryFunctionType,
-  type FunctionVisibility as RegistryFunctionVisibility,
 } from './registry'
 
-// Export FunctionReference types and api generation utilities
+// ============================================================================
+// Function References and API Generation
+// ============================================================================
+
 export {
   // Core types
   type FunctionReference,

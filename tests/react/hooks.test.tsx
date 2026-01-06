@@ -32,22 +32,52 @@ import type { FunctionReference, PaginationResult } from '../../src/types'
 // Mock ConvexClient
 // ============================================================================
 
-const mockQuery = vi.fn().mockResolvedValue(null)
-const mockMutation = vi.fn().mockResolvedValue(null)
-const mockAction = vi.fn().mockResolvedValue(null)
-const mockOnUpdate = vi.fn().mockReturnValue(() => {})
-const mockSetAuth = vi.fn()
-const mockClearAuth = vi.fn()
-const mockClose = vi.fn()
+// Use vi.hoisted to ensure mocks are available when vi.mock factory runs
+// (vi.mock is hoisted to the top of the file, before regular const declarations)
+const {
+  mockQuery,
+  mockMutation,
+  mockAction,
+  mockOnUpdate,
+  mockSetAuth,
+  mockClearAuth,
+  mockClose,
+} = vi.hoisted(() => ({
+  mockQuery: vi.fn().mockResolvedValue(null),
+  mockMutation: vi.fn().mockResolvedValue(null),
+  mockAction: vi.fn().mockResolvedValue(null),
+  mockOnUpdate: vi.fn().mockReturnValue(() => {}),
+  mockSetAuth: vi.fn(),
+  mockClearAuth: vi.fn(),
+  mockClose: vi.fn(),
+}))
 
 // Reset all mock implementations to defaults before each test
 function resetMockDefaults() {
-  mockQuery.mockReset().mockResolvedValue(null)
-  mockMutation.mockReset().mockResolvedValue(null)
-  mockAction.mockReset().mockResolvedValue(null)
-  mockOnUpdate.mockReset().mockReturnValue(() => {})
+  // Clear and reset all mocks with proper default implementations
+  mockQuery.mockClear()
+  mockQuery.mockReset()
+  mockQuery.mockResolvedValue(null)
+
+  mockMutation.mockClear()
+  mockMutation.mockReset()
+  mockMutation.mockResolvedValue(null)
+
+  mockAction.mockClear()
+  mockAction.mockReset()
+  mockAction.mockResolvedValue(null)
+
+  mockOnUpdate.mockClear()
+  mockOnUpdate.mockReset()
+  mockOnUpdate.mockReturnValue(() => {})
+
+  mockSetAuth.mockClear()
   mockSetAuth.mockReset()
+
+  mockClearAuth.mockClear()
   mockClearAuth.mockReset()
+
+  mockClose.mockClear()
   mockClose.mockReset()
 }
 
@@ -557,8 +587,11 @@ describe('useMutation', () => {
     })
 
     it('should be stable across renders', () => {
+      // Create mutation ref once outside the hook to ensure stable reference
+      const mutationRef = createMutationRef('messages:send')
+
       const { result, rerender } = renderHook(
-        () => useMutation(createMutationRef('messages:send')),
+        () => useMutation(mutationRef),
         { wrapper: createWrapper() }
       )
 
@@ -614,17 +647,25 @@ describe('useMutation', () => {
         { wrapper: createWrapper() }
       )
 
+      // First mutation should succeed
       await act(async () => {
         const result1 = await result.current({ index: 1 })
         expect(result1).toEqual({ success: true, callCount: 1 })
       })
 
-      await expect(
-        act(async () => {
+      // Second mutation should fail - wrap in try/catch to properly handle the error
+      let secondError: Error | null = null
+      await act(async () => {
+        try {
           await result.current({ index: 2 })
-        })
-      ).rejects.toThrow('Second mutation failed')
+        } catch (err) {
+          secondError = err as Error
+        }
+      })
+      expect(secondError).toBeInstanceOf(Error)
+      expect(secondError?.message).toBe('Second mutation failed')
 
+      // Third mutation should succeed
       await act(async () => {
         const result3 = await result.current({ index: 3 })
         expect(result3).toEqual({ success: true, callCount: 3 })
@@ -657,6 +698,14 @@ describe('useMutationWithState', () => {
         { wrapper: createWrapper() }
       )
 
+      // Debug: Check if there was an error during render
+      if (result.current === null) {
+        console.error('result.current is null - hook likely threw an error')
+        // @ts-expect-error - accessing internal error property for debugging
+        console.error('renderHook error:', result.error)
+      }
+
+      expect(result.current).not.toBeNull()
       expect(result.current.isLoading).toBe(false)
     })
 
@@ -943,8 +992,11 @@ describe('useAction', () => {
     })
 
     it('should be stable across renders', () => {
+      // Create action ref once outside the hook to ensure stable reference
+      const actionRef = createActionRef('ai:generate')
+
       const { result, rerender } = renderHook(
-        () => useAction(createActionRef('ai:generate')),
+        () => useAction(actionRef),
         { wrapper: createWrapper() }
       )
 
