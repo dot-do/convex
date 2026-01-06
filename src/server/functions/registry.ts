@@ -6,14 +6,17 @@
  *
  * Features:
  * - Singleton pattern for global function registration
+ * - Factory pattern for creating isolated registry instances (Workers compatibility)
  * - Registration of functions with path validation
  * - Lookup of functions by path
  * - Listing functions by type and visibility
  * - HTTP endpoint registration with path parameter matching
  * - Module-based bulk registration
  * - Iteration support for traversing registered functions
+ * - Context-scoped registries for Workers/Durable Objects isolation
  *
  * Bead: convex-2pb - Function Registration and Lookup System
+ * Bead: convex-c9ys - Function Registry Workers Compatibility
  *
  * @module
  */
@@ -424,18 +427,29 @@ function createHttpEndpointEntry(
 // ============================================================================
 
 /**
- * Singleton registry for Convex functions and HTTP endpoints.
+ * Registry for Convex functions and HTTP endpoints.
  *
  * Provides centralized storage and lookup for all registered functions,
  * supporting both standard Convex functions (queries, mutations, actions)
  * and HTTP endpoints.
  *
- * The registry uses the singleton pattern to ensure a single global instance
- * is shared across the application. Use `getInstance()` to access the registry.
+ * The registry supports two usage patterns:
+ * 1. Singleton pattern via `getInstance()` for traditional Node.js environments
+ * 2. Factory pattern via `createInstance()` for Workers/Durable Objects isolation
+ *
+ * For Cloudflare Workers compatibility, use `createInstance()`, `forContext()`,
+ * or `forDurableObject()` to get isolated registry instances per request/context.
  *
  * @example
  * ```typescript
+ * // Singleton pattern (traditional)
  * const registry = FunctionRegistry.getInstance()
+ *
+ * // Factory pattern (Workers compatibility)
+ * const isolatedRegistry = FunctionRegistry.createInstance()
+ *
+ * // Context-scoped registry
+ * const contextRegistry = FunctionRegistry.forContext('request-123')
  *
  * // Register functions
  * registry.register('users:get', getUserQuery)
@@ -463,6 +477,18 @@ export class FunctionRegistry implements Iterable<FunctionEntry> {
   private static instance: FunctionRegistry | null = null
 
   /**
+   * Storage for context-scoped registry instances.
+   * @internal
+   */
+  private static contextRegistries: Map<string, FunctionRegistry> = new Map()
+
+  /**
+   * Storage for Durable Object-scoped registry instances.
+   * @internal
+   */
+  private static durableObjectRegistries: Map<string, FunctionRegistry> = new Map()
+
+  /**
    * Storage for registered functions.
    * @internal
    */
@@ -475,11 +501,13 @@ export class FunctionRegistry implements Iterable<FunctionEntry> {
   private readonly httpEndpoints: Map<string, HttpEndpointEntry> = new Map()
 
   /**
-   * Private constructor to enforce singleton pattern.
+   * Constructor for registry instances.
    *
-   * Use `FunctionRegistry.getInstance()` to access the registry.
+   * While the constructor is now accessible for factory methods,
+   * prefer using `getInstance()`, `createInstance()`, `forContext()`,
+   * or `forDurableObject()` for consistency.
    */
-  private constructor() {}
+  constructor() {}
 
   // ==========================================================================
   // Singleton Methods
@@ -511,6 +539,8 @@ export class FunctionRegistry implements Iterable<FunctionEntry> {
    * Clears the current instance, causing the next `getInstance()` call
    * to create a fresh registry. Primarily used for testing.
    *
+   * Also clears all context-scoped and Durable Object-scoped registries.
+   *
    * @example
    * ```typescript
    * // In test setup/teardown
@@ -521,6 +551,121 @@ export class FunctionRegistry implements Iterable<FunctionEntry> {
    */
   public static resetInstance(): void {
     FunctionRegistry.instance = null
+    FunctionRegistry.contextRegistries.clear()
+    FunctionRegistry.durableObjectRegistries.clear()
+  }
+
+  // ==========================================================================
+  // Factory Methods (Workers Compatibility)
+  // ==========================================================================
+
+  /**
+   * Create a new, independent registry instance.
+   *
+   * Unlike `getInstance()`, this creates a fresh registry that is completely
+   * isolated from other registries. Use this for Workers compatibility where
+   * each request/context needs its own isolated state.
+   *
+   * @returns A new, independent FunctionRegistry instance
+   *
+   * @example
+   * ```typescript
+   * // Each call creates a completely independent registry
+   * const registry1 = FunctionRegistry.createInstance()
+   * const registry2 = FunctionRegistry.createInstance()
+   *
+   * registry1.register('fn:a', fnA)
+   * registry2.has('fn:a') // => false (isolated)
+   * ```
+   */
+  public static createInstance(): FunctionRegistry {
+    return new FunctionRegistry()
+  }
+
+  /**
+   * Get or create a registry instance for a specific context.
+   *
+   * Returns the same registry instance for the same context ID, allowing
+   * context-scoped state isolation. Useful for request-scoped registries
+   * in Workers environments.
+   *
+   * @param contextId - A unique identifier for the context (e.g., request ID)
+   * @returns A FunctionRegistry instance scoped to the given context
+   *
+   * @example
+   * ```typescript
+   * // In a request handler
+   * const registry = FunctionRegistry.forContext('request-123')
+   * registry.register('user:handler', userFn)
+   *
+   * // Same context returns same instance
+   * FunctionRegistry.forContext('request-123').has('user:handler') // => true
+   *
+   * // Different context is isolated
+   * FunctionRegistry.forContext('request-456').has('user:handler') // => false
+   * ```
+   */
+  public static forContext(contextId: string): FunctionRegistry {
+    let registry = FunctionRegistry.contextRegistries.get(contextId)
+    if (!registry) {
+      registry = new FunctionRegistry()
+      FunctionRegistry.contextRegistries.set(contextId, registry)
+    }
+    return registry
+  }
+
+  /**
+   * Get or create a registry instance for a specific Durable Object.
+   *
+   * Returns the same registry instance for the same object ID, allowing
+   * per-object state isolation in Cloudflare Durable Objects.
+   *
+   * @param objectId - A unique identifier for the Durable Object
+   * @returns A FunctionRegistry instance scoped to the given object
+   *
+   * @example
+   * ```typescript
+   * // In a Durable Object
+   * class UserDO {
+   *   constructor(state, env) {
+   *     this.registry = FunctionRegistry.forDurableObject(state.id.toString())
+   *   }
+   * }
+   * ```
+   */
+  public static forDurableObject(objectId: string): FunctionRegistry {
+    let registry = FunctionRegistry.durableObjectRegistries.get(objectId)
+    if (!registry) {
+      registry = new FunctionRegistry()
+      FunctionRegistry.durableObjectRegistries.set(objectId, registry)
+    }
+    return registry
+  }
+
+  /**
+   * Run a callback with an isolated registry context.
+   *
+   * Creates a new isolated registry instance, passes it to the callback,
+   * and ensures the registry is only used within that callback scope.
+   * Useful for automatic per-request isolation.
+   *
+   * @param callback - An async function that receives the isolated registry
+   * @returns A promise that resolves to the callback's return value
+   *
+   * @example
+   * ```typescript
+   * const result = await FunctionRegistry.runInContext(async (registry) => {
+   *   registry.register('isolated:fn', myFn)
+   *   // Other requests can't see this registration
+   *   return registry.getFunction('isolated:fn')
+   * })
+   * ```
+   */
+  public static async runInContext<T>(
+    callback: (registry: FunctionRegistry) => Promise<T>
+  ): Promise<T> {
+    const isolatedRegistry = FunctionRegistry.createInstance()
+    return callback(isolatedRegistry)
   }
 
   // ==========================================================================
