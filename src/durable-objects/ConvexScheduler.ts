@@ -152,10 +152,18 @@ export class ConvexScheduler implements DurableObject {
     }
 
     const row = results[0]
+    let args: unknown
+    try {
+      args = JSON.parse(row.args as string)
+    } catch (error) {
+      console.error(`Failed to parse args for scheduled function ${row.id}:`, error)
+      args = {}
+    }
+
     return {
       id: row.id as string,
       functionPath: row.function_path as string,
-      args: JSON.parse(row.args as string) as unknown,
+      args,
       runAt: row.run_at as number,
       status: row.status as ScheduledFunction['status'],
       createdAt: row.created_at as number,
@@ -188,18 +196,28 @@ export class ConvexScheduler implements DurableObject {
 
     const results = this.sql.exec(sql, ...params).toArray()
 
-    return results.map(row => ({
-      id: row.id as string,
-      functionPath: row.function_path as string,
-      args: JSON.parse(row.args as string) as unknown,
-      runAt: row.run_at as number,
-      status: row.status as ScheduledFunction['status'],
-      createdAt: row.created_at as number,
-      ...(row.completed_at !== null && { completedAt: row.completed_at as number }),
-      ...(row.error !== null && { error: row.error as string }),
-      retries: row.retries as number,
-      maxRetries: row.max_retries as number,
-    }))
+    return results.map(row => {
+      let args: unknown
+      try {
+        args = JSON.parse(row.args as string)
+      } catch (error) {
+        console.error(`Failed to parse args for scheduled function ${row.id}:`, error)
+        args = {}
+      }
+
+      return {
+        id: row.id as string,
+        functionPath: row.function_path as string,
+        args,
+        runAt: row.run_at as number,
+        status: row.status as ScheduledFunction['status'],
+        createdAt: row.created_at as number,
+        ...(row.completed_at !== null && { completedAt: row.completed_at as number }),
+        ...(row.error !== null && { error: row.error as string }),
+        retries: row.retries as number,
+        maxRetries: row.max_retries as number,
+      }
+    })
   }
 
   /**
@@ -233,10 +251,18 @@ export class ConvexScheduler implements DurableObject {
     ).toArray()
 
     for (const row of due) {
+      let args: unknown
+      try {
+        args = JSON.parse(row.args as string)
+      } catch (error) {
+        console.error(`Failed to parse args for scheduled function ${row.id}:`, error)
+        args = {}
+      }
+
       const func: ScheduledFunction = {
         id: row.id as string,
         functionPath: row.function_path as string,
-        args: JSON.parse(row.args as string) as unknown,
+        args,
         runAt: row.run_at as number,
         status: 'running',
         createdAt: row.created_at as number,

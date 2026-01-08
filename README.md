@@ -1,457 +1,495 @@
 # convex.do
 
-A 100% Convex API compatible package running on Cloudflare Workers with Durable Objects.
+> Real-Time Database. Edge-Native. Serverless-First. AI-Ready.
 
-**convex.do** brings the full power of Convex's real-time database and backend infrastructure to Cloudflare's edge platform. This package provides a drop-in replacement for Convex that runs entirely on Cloudflare Workers, leveraging Durable Objects for persistent state management, real-time synchronization, and scheduled tasks.
+Convex charges $25/month for their starter tier and scales to enterprise pricing. They control your infrastructure, your data, and your deployment options. Real-time subscriptions work great - as long as you're on their cloud.
+
+**convex.do** is the open-source alternative. Full Convex compatibility. Runs on your Cloudflare account. Real-time subscriptions via Durable Objects. Deploy in minutes, not sprints.
+
+## AI-Native API
+
+```typescript
+import { convex } from 'convex.do'           // Full SDK
+import { convex } from 'convex.do/tiny'      // Minimal client
+import { convex } from 'convex.do/react'     // React hooks
+```
+
+Natural language for real-time apps:
+
+```typescript
+import { convex } from 'convex.do'
+
+// Talk to your database like a colleague
+const messages = await convex`messages in #general`
+const users = await convex`active users online now`
+const tasks = await convex`overdue tasks assigned to me`
+
+// Chain like sentences
+await convex`new users this week`
+  .notify(`Welcome to the team!`)
+
+// Real-time that speaks human
+await convex`watch messages in #general`
+  .on('new', msg => console.log(msg.text))
+  .on('update', msg => console.log('edited:', msg.text))
+```
+
+## The Problem
+
+Convex is a great developer experience trapped in a SaaS model:
+
+| What Convex Charges | The Reality |
+|---------------------|-------------|
+| **Starter** | $25/month (limited) |
+| **Pro** | $50/month + usage |
+| **Enterprise** | Custom pricing |
+| **Vendor Lock-in** | Your data on their cloud |
+| **Egress** | They control the costs |
+| **Customization** | Limited to their features |
+
+### The SaaS Tax
+
+- Pricing scales with success (you pay more as you grow)
+- No self-hosting option
+- Data lives on their infrastructure
+- Feature velocity controlled by their roadmap
+- Real-time subscriptions are their moat
+
+### The React Coupling
+
+Convex works beautifully with React. But:
+- Server components need workarounds
+- Non-React frameworks are second-class
+- The hooks are the API (no escape hatch)
+- Testing requires their test harness
+
+## The Solution
+
+**convex.do** gives you Convex's DX on infrastructure you control:
+
+```
+Convex Cloud                        convex.do
+---------------------------------------------------------------
+$25-50+/month                       Your Cloudflare bill (~$5)
+Their cloud                         Your Cloudflare account
+Vendor lock-in                      MIT licensed
+React-first                         Any framework
+Their feature velocity              Fork and extend
+Subscriptions via their infra       Durable Objects you own
+```
+
+## One-Click Deploy
+
+```bash
+npx create-dotdo convex
+```
+
+Real-time database running on your infrastructure. Convex-compatible API. WebSocket subscriptions out of the box.
+
+```typescript
+import { Convex } from 'convex.do'
+
+export default Convex({
+  name: 'my-app',
+  domain: 'api.my-app.com',
+})
+```
 
 ## Features
 
-- **100% Convex API Compatible**: Use the same Convex client and server APIs with zero code changes
-- **Edge Computing**: Deploy on Cloudflare Workers for ultra-low latency globally
-- **Durable Objects**: Leverage Durable Objects for persistent, coordinated state
-- **Real-Time Sync**: WebSocket-based subscriptions for real-time updates
-- **TypeScript First**: Full TypeScript support with comprehensive type definitions
-- **React Integration**: Built-in React hooks for seamless frontend integration
-- **Queries, Mutations & Actions**: Support for all Convex operation types
-- **Scheduled Tasks**: Integrated scheduler via Durable Objects
-
-## Installation
-
-```bash
-npm install convex.do
-```
-
-Or with yarn:
-
-```bash
-yarn add convex.do
-```
-
-### Prerequisites
-
-- Node.js >= 18.0.0
-- A Cloudflare account with Workers enabled
-- Wrangler CLI for deployment
-
-## Configuration
-
-Create a `wrangler.toml` file in your project root:
-
-```toml
-name = "convex-app"
-type = "service"
-main = "src/index.ts"
-compatibility_date = "2024-12-05"
-
-[[durable_objects.bindings]]
-name = "CONVEX_DATABASE"
-class_name = "ConvexDatabase"
-
-[[durable_objects.bindings]]
-name = "CONVEX_SUBSCRIPTION"
-class_name = "ConvexSubscription"
-
-[[durable_objects.bindings]]
-name = "CONVEX_SCHEDULER"
-class_name = "ConvexScheduler"
-
-[[durable_objects.bindings]]
-name = "CONVEX_STORAGE"
-class_name = "ConvexStorage"
-
-[[r2_buckets]]
-name = "STORAGE_BUCKET"
-binding = "STORAGE_BUCKET"
-```
-
-## Usage Examples
-
-### Server-Side: Defining Queries and Mutations
+### Messages and Chat
 
 ```typescript
-import { query, mutation } from 'convex.do/server'
+// Messages just work
+const messages = await convex`messages in #general`
+const recent = await convex`messages in #general since yesterday`
+const unread = await convex`unread messages for @alice`
 
-// Define a query
-export const getUsers = query(async ({ db }, id: string) => {
-  return await db.query('users').filter(u => u.id === id).collect()
-})
+// Send naturally
+await convex`send "Hello team!" to #general`
+await convex`send "Meeting in 5" to #engineering`
 
-// Define a mutation
-export const createUser = mutation(async ({ db }, name: string) => {
-  const user = { id: crypto.randomUUID(), name, createdAt: new Date() }
-  await db.insert('users', user)
-  return user
+// Real-time subscriptions
+await convex`watch #general`.on('message', msg => {
+  console.log(`${msg.author}: ${msg.text}`)
 })
 ```
 
-### Client-Side: Using the Convex Client
+### Users and Presence
 
 ```typescript
-import { ConvexClient } from 'convex.do/client'
+// Query users naturally
+const alice = await convex`user alice`
+const online = await convex`users online now`
+const team = await convex`users in engineering team`
 
-const client = new ConvexClient(import.meta.env.VITE_CONVEX_URL)
+// Create users
+await convex`create user alice with email alice@example.com`
 
-// Call a query
-const users = await client.query('getUsers', { id: 'user123' })
-
-// Call a mutation
-const newUser = await client.mutation('createUser', { name: 'John Doe' })
+// Presence is automatic
+await convex`watch presence in #general`
+  .on('join', user => console.log(`${user.name} joined`))
+  .on('leave', user => console.log(`${user.name} left`))
 ```
 
-### React Integration
-
-Use the provided React hooks for seamless integration:
+### Tasks and Documents
 
 ```typescript
-import { useQuery, useMutation } from 'convex.do/react'
+// Tasks
+const myTasks = await convex`tasks assigned to me`
+const overdue = await convex`overdue tasks`
+const urgent = await convex`high priority tasks due today`
 
-export function UserList() {
-  const users = useQuery('getUsers', {})
-  const createUser = useMutation('createUser')
+// Create and update
+await convex`create task "Review PR" assigned to @bob due tomorrow`
+await convex`complete task-123`
+await convex`reassign task-123 to @alice`
 
-  const handleCreate = async (name: string) => {
-    await createUser({ name })
-  }
+// Documents
+const docs = await convex`documents in project-x`
+const recent = await convex`documents edited this week`
+```
+
+### Real-Time Subscriptions
+
+```typescript
+// Watch anything
+await convex`watch tasks assigned to me`
+  .on('new', task => notify(task))
+  .on('complete', task => celebrate(task))
+
+// Collaborative editing
+await convex`watch document-123`
+  .on('edit', delta => applyDelta(delta))
+
+// Presence and typing indicators
+await convex`watch typing in #general`
+  .on('start', user => showTyping(user))
+  .on('stop', user => hideTyping(user))
+```
+
+### Mutations
+
+```typescript
+// Write data naturally
+await convex`add message "Hello" to #general from @alice`
+await convex`update user alice set status to "away"`
+await convex`delete message-456`
+
+// Batch operations
+await convex`
+  mark all tasks in sprint-5 as complete
+  notify @team "Sprint complete!"
+  create celebration in #general
+`
+```
+
+### Scheduled Jobs
+
+```typescript
+// Schedule anything
+await convex`run cleanup every day at 3am`
+await convex`send reminder to @alice in 30 minutes`
+await convex`archive old messages every sunday`
+
+// Check scheduled jobs
+const jobs = await convex`scheduled jobs`
+await convex`cancel job-789`
+```
+
+## Schema Definition
+
+```typescript
+// Define your schema naturally
+await convex`
+  table messages
+    text: string
+    author: reference to users
+    channel: string
+    created: timestamp
+
+  table users
+    name: string
+    email: string
+    avatar: url
+    status: online | away | offline
+`
+
+// Or use TypeScript
+import { schema } from 'convex.do'
+
+export default schema({
+  messages: {
+    text: 'string',
+    author: 'users',
+    channel: 'string',
+  },
+  users: {
+    name: 'string',
+    email: 'string',
+  },
+})
+```
+
+## React Integration
+
+```typescript
+import { useConvex, useQuery, useMutation } from 'convex.do/react'
+
+export function Chat({ channel }) {
+  // Natural queries in hooks
+  const messages = useQuery(convex`messages in ${channel}`)
+  const send = useMutation(convex`send message to ${channel}`)
 
   return (
     <div>
-      {users?.map(user => (
-        <div key={user.id}>{user.name}</div>
+      {messages?.map(msg => (
+        <Message key={msg.id} message={msg} />
       ))}
-      <button onClick={() => handleCreate('New User')}>
-        Add User
-      </button>
+      <Input onSend={text => send`${text}`} />
     </div>
   )
 }
 ```
 
-### Real-Time Synchronization
-
-Subscribe to real-time updates using the `useQuery` hook, which automatically handles subscriptions:
+### Real-Time Hooks
 
 ```typescript
-import { useQuery } from 'convex.do/react'
+// Presence hook
+const online = usePresence(convex`users in #general`)
 
-export function LiveUserCount() {
-  const count = useQuery('getUserCount')
+// Typing indicators
+const typing = useTyping(convex`typing in #general`)
 
-  return <div>Active users: {count}</div>
-}
+// Live cursors
+const cursors = useCursors(convex`cursors in document-123`)
 ```
 
-For advanced subscription management, use the `SubscriptionManager` from the sync module:
+## Actions
 
 ```typescript
-import { SubscriptionManager } from 'convex.do/sync'
+// Long-running operations
+await convex`send welcome email to @alice`
+await convex`generate report for Q4`
+await convex`sync inventory with shopify`
 
-const subscriptionManager = new SubscriptionManager(convexClient)
-const subscription = await subscriptionManager.subscribe('getUserCount', {})
+// Chain actions
+await convex`new signup @alice`
+  .then(convex`send welcome email`)
+  .then(convex`notify sales team`)
 ```
 
-### Server-Side Actions
-
-Define server-side actions that can run for longer durations:
+## File Storage
 
 ```typescript
-import { action } from 'convex.do/server'
+// Upload files naturally
+await convex`upload avatar for @alice`
+await convex`attach document to task-123`
 
-export const sendEmail = action(async ({ db }, userId: string) => {
-  const user = await db.query('users').filter(u => u.id === userId).first()
+// Query files
+const files = await convex`files uploaded by @alice`
+const images = await convex`images in project-x`
 
-  // Send email via external service
-  await fetch('https://api.sendgrid.com/send', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${env.SENDGRID_API_KEY}` },
-    body: JSON.stringify({ to: user.email, subject: 'Hello!' })
-  })
+// Signed URLs
+const url = await convex`download link for file-456`
+```
 
-  return { success: true }
+## Architecture
+
+### Durable Object per Database
+
+```
+ConvexDO (your-app)
+  |
+  +-- SQLite: Tables, indexes, subscriptions
+  |
+  +-- WebSockets: Real-time connections
+  |
+  +-- Scheduler: Cron jobs, delayed tasks
+  |
+  +-- R2: File storage
+```
+
+### Real-Time Architecture
+
+```
+Client                   Edge                    Durable Object
+  |                        |                          |
+  |-- WebSocket connect -->|                          |
+  |                        |-- Upgrade to DO -------->|
+  |                        |                          |
+  |-- subscribe ---------->|-- Forward -------------->|
+  |                        |                          |
+  |                        |<-- Push updates ---------|
+  |<-- Real-time data -----|                          |
+```
+
+### Storage Tiers
+
+| Tier | Storage | Use Case | Latency |
+|------|---------|----------|---------|
+| **Hot** | SQLite | Active queries, subscriptions | <5ms |
+| **Warm** | R2 | File attachments, exports | <50ms |
+| **Archive** | R2 Glacier | Old data, compliance | <1s |
+
+## vs Convex Cloud
+
+| Feature | Convex Cloud | convex.do |
+|---------|--------------|-----------|
+| **Pricing** | $25-50+/month | ~$5/month |
+| **Infrastructure** | Their cloud | Your Cloudflare |
+| **Real-time** | Yes | Yes (Durable Objects) |
+| **React Hooks** | Yes | Yes |
+| **TypeScript** | Yes | Yes |
+| **Self-hosting** | No | Yes |
+| **Custom domains** | Enterprise | Included |
+| **Data location** | US only | Global edge |
+| **Vendor lock-in** | Yes | MIT licensed |
+
+## Promise Pipelining
+
+Chain operations without waiting:
+
+```typescript
+// All in one round trip
+const result = await convex`create project "Launch"`
+  .then(project => convex`add @alice to ${project}`)
+  .then(project => convex`create task "Setup" in ${project}`)
+  .then(task => convex`assign ${task} to @alice`)
+
+// Map over results
+await convex`overdue tasks`
+  .map(task => convex`remind assignee of ${task}`)
+
+// Parallel operations
+await convex`all team members`
+  .map(member => convex`send weekly digest to ${member}`)
+```
+
+## Aggregations
+
+```typescript
+// Count, sum, average
+const count = await convex`count messages in #general`
+const total = await convex`sum revenue this month`
+const avg = await convex`average response time`
+
+// Group by
+const byChannel = await convex`messages grouped by channel`
+const byUser = await convex`tasks completed grouped by assignee`
+
+// Time series
+const daily = await convex`signups per day this month`
+const hourly = await convex`messages per hour today`
+```
+
+## Search
+
+```typescript
+// Full-text search
+const results = await convex`search messages for "launch date"`
+const docs = await convex`search documents containing "quarterly review"`
+
+// Filtered search
+const tasks = await convex`search tasks for "bug" assigned to @alice`
+```
+
+## Deployment Options
+
+### Cloudflare Workers (Recommended)
+
+```bash
+npx create-dotdo convex
+wrangler deploy
+```
+
+### Docker
+
+```bash
+docker run -p 8787:8787 dotdo/convex
+```
+
+### Self-Hosted
+
+```bash
+git clone https://github.com/dotdo/convex.do
+cd convex.do
+pnpm install && pnpm build
+wrangler deploy
+```
+
+## Migration from Convex
+
+```typescript
+// Your existing Convex code
+import { query, mutation } from 'convex/server'
+
+export const getMessages = query(async ({ db }) => {
+  return await db.query('messages').collect()
 })
-```
 
-## API Reference
+// Works unchanged with convex.do
+import { query, mutation } from 'convex.do/server'
 
-### Server Module (`convex.do/server`)
-
-#### `query(handler: QueryHandler)`
-
-Define a query function that reads data from the database.
-
-```typescript
-query(async ({ db, env }, arg1: Type1, arg2: Type2) => {
-  // Read-only database operations
-  return result
+export const getMessages = query(async ({ db }) => {
+  return await db.query('messages').collect()
 })
+
+// Or use natural language
+const messages = await convex`all messages`
 ```
 
-#### `mutation(handler: MutationHandler)`
-
-Define a mutation function that modifies data in the database.
-
-```typescript
-mutation(async ({ db, env }, arg1: Type1, arg2: Type2) => {
-  // Read-write database operations
-  return result
-})
-```
-
-#### `action(handler: ActionHandler)`
-
-Define an action function that can call external APIs and run longer operations.
-
-```typescript
-action(async ({ db, env }, arg1: Type1, arg2: Type2) => {
-  // Long-running operations, external API calls
-  return result
-})
-```
-
-### Client Module (`convex.do/client`)
-
-#### `ConvexClient`
-
-Main client for communicating with the Convex backend.
-
-```typescript
-class ConvexClient {
-  constructor(url: string)
-  query<T>(path: string, args: Record<string, any>): Promise<T>
-  mutation<T>(path: string, args: Record<string, any>): Promise<T>
-  action<T>(path: string, args: Record<string, any>): Promise<T>
-}
-```
-
-### React Module (`convex.do/react`)
-
-#### `ConvexProvider`
-
-Provider component to set up Convex client in your React app.
-
-```typescript
-import { ConvexProvider } from 'convex.do/react'
-import { ConvexClient } from 'convex.do/client'
-
-const client = new ConvexClient(import.meta.env.VITE_CONVEX_URL)
-
-export function App() {
-  return (
-    <ConvexProvider client={client}>
-      <YourApp />
-    </ConvexProvider>
-  )
-}
-```
-
-#### `useConvex(): ConvexClient`
-
-Hook to access the Convex client instance from within components.
-
-```typescript
-import { useConvex } from 'convex.do/react'
-
-export function MyComponent() {
-  const convex = useConvex()
-  // Use convex.query(), convex.mutation(), convex.action()
-}
-```
-
-#### `useQuery<T>(path: string, args?: Record<string, any>): T | undefined`
-
-Hook to call a query and subscribe to real-time updates.
-
-```typescript
-const data = useQuery('getUsers', { limit: 10 })
-```
-
-#### `useMutation<T>(path: string): (args: Record<string, any>) => Promise<T>`
-
-Hook to call a mutation.
-
-```typescript
-const createUser = useMutation('createUser')
-await createUser({ name: 'Alice' })
-```
-
-#### `useAction<T>(path: string): (args: Record<string, any>) => Promise<T>`
-
-Hook to call an action.
-
-```typescript
-const sendEmail = useAction('sendEmail')
-await sendEmail({ userId: 'user123' })
-```
-
-#### `usePaginatedQuery<T>(path: string, args?: Record<string, any>, options?: PaginationOptions): PaginationResult<T>`
-
-Hook for paginated queries with built-in pagination state management.
-
-```typescript
-const { results, status, loadMore } = usePaginatedQuery('getUsers', {}, { initialNumItems: 10 })
-
-// Load more items as needed
-const handleLoadMore = () => {
-  loadMore(10)
-}
-```
-
-### Sync Module (`convex.do/sync`)
-
-The sync module provides low-level subscription and conflict resolution utilities:
-
-- `ConflictResolver`: Manages conflict resolution strategies for synchronization
-- `SubscriptionManager`: Handles WebSocket connections and subscription management
-- `Subscription`: Individual subscription instances with state tracking
-- `SubscriptionState`: Types and utilities for subscription state management
-
-### Values Module (`convex.do/values`)
-
-Type-safe value definitions for your data:
-
-```typescript
-import { v } from 'convex.do/values'
-
-const userSchema = {
-  id: v.id('users'),
-  name: v.string(),
-  email: v.string(),
-  createdAt: v.number(),
-}
-```
-
-## Durable Objects
-
-convex.do uses four primary Durable Objects:
-
-### ConvexDatabase
-
-Manages persistent data storage and retrieval with ACID guarantees.
-
-### ConvexSubscription
-
-Handles WebSocket connections and real-time subscription management.
-
-### ConvexScheduler
-
-Manages scheduled tasks and cron jobs.
-
-### ConvexStorage
-
-Manages file storage and retrieval via Cloudflare R2.
-
-## Development
-
-### Build
-
-```bash
-npm run build
-```
-
-### Development Server
-
-```bash
-npm run dev
-```
-
-The development server starts on `http://localhost:8787` and supports hot reloading.
-
-### Testing
-
-Run tests with:
-
-```bash
-npm run test
-```
-
-Run tests in watch mode:
-
-```bash
-npm run test:watch
-```
-
-Generate coverage report:
-
-```bash
-npm run test:coverage
-```
-
-### Linting and Formatting
-
-Lint your code:
-
-```bash
-npm run lint
-```
-
-Format your code:
-
-```bash
-npm run format
-```
-
-### Type Checking
-
-Check TypeScript types:
-
-```bash
-npm run typecheck
-```
-
-## Deployment
-
-Deploy to Cloudflare Workers:
-
-```bash
-npm run deploy
-```
-
-This will build the project and deploy it to Cloudflare Workers.
-
-## Environment Variables
-
-Set environment variables in your `wrangler.toml`:
-
-```toml
-[env.production]
-vars = { ENVIRONMENT = "production" }
-
-[env.development]
-vars = { ENVIRONMENT = "development" }
-```
-
-Access environment variables in your handlers:
-
-```typescript
-defineQuery(async ({ env }, arg) => {
-  const apiKey = env.API_KEY
-})
-```
-
-## Comparison with Convex
-
-| Feature | convex.do | Convex |
-|---------|-----------|--------|
-| Real-time Database | Yes | Yes |
-| Queries | Yes | Yes |
-| Mutations | Yes | Yes |
-| Actions | Yes | Yes |
-| React Integration | Yes | Yes |
-| TypeScript | Yes | Yes |
-| Infrastructure | Cloudflare Workers | Convex Cloud |
-| Durable Objects | Yes | N/A |
-| Edge Deployment | Yes | No (US-based) |
+## Roadmap
+
+### Core
+- [x] Real-time subscriptions
+- [x] Queries and mutations
+- [x] Actions (long-running)
+- [x] File storage
+- [x] Scheduled jobs
+- [ ] Transactions
+- [ ] Vector search
+
+### React
+- [x] useQuery hook
+- [x] useMutation hook
+- [x] useAction hook
+- [x] Real-time updates
+- [ ] Suspense support
+- [ ] Server components
+
+### Infrastructure
+- [x] Durable Objects backend
+- [x] SQLite storage
+- [x] R2 file storage
+- [x] WebSocket subscriptions
+- [ ] Multi-region replication
+- [ ] Edge caching
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+convex.do is open source under the MIT license.
+
+```bash
+git clone https://github.com/dotdo/convex.do
+cd convex.do
+pnpm install
+pnpm test
+```
 
 ## License
 
-MIT
+MIT License - Own your real-time infrastructure.
 
-## Links
+---
 
-- [Convex Documentation](https://docs.convex.dev)
-- [Cloudflare Workers Documentation](https://developers.cloudflare.com/workers/)
-- [Cloudflare Durable Objects Documentation](https://developers.cloudflare.com/durable-objects/)
-- [Repository](https://github.com/drivly/convex.do)
+<p align="center">
+  <strong>Real-time without the SaaS tax.</strong>
+  <br />
+  Convex DX. Your infrastructure. MIT licensed.
+  <br /><br />
+  <a href="https://convex.do">Website</a> |
+  <a href="https://docs.convex.do">Docs</a> |
+  <a href="https://discord.gg/dotdo">Discord</a> |
+  <a href="https://github.com/dotdo/convex.do">GitHub</a>
+</p>
